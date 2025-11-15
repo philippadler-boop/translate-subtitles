@@ -1,0 +1,9 @@
+srt
+tqdm
+python-dotenv
+
+deep-translator      # Google (and optional other web-based engines)
+deepl                # Official DeepL API SDK
+openai               # GPT-4o
+transformers         # HuggingFace models
+torch                # backend for transformers (CPU is fine)
