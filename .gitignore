@@ -1,2 +1,62 @@
-/.venv
-/config.json
+# === Python artifacts ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+*.pickle
+*.pytorch
+*.pt
+*.bin
+
+# === Virtual environments ===
+.venv/
+venv/
+env/
+
+# === Editor / IDE files ===
+.vscode/
+.idea/
+*.code-workspace
+
+# === OS-generated files ===
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+logs/
+*.log
+
+# === Output subtitles ===
+workspaces/output/
+*.srt
+
+# === Temporary or cache files ===
+.cache/
+cache/
+tmp/
+temp/
+*.tmp
+
+# === HuggingFace models (large) ===
+# Comment out if you WANT local models tracked
+huggingface/
+models/
+*.safetensors
+
+# === Sensitive files ===
+.env
+config.json
+
+# === Python build / packaging ===
+dist/
+build/
+*.egg-info/
+pip-wheel-metadata/
+
+# === Jupyter notebooks and checkpoints ===
+.ipynb_checkpoints/
+
+# === Generated test files ===
+tests/output/
