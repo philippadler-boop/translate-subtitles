@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.audio_io import audio_cache_path, extract_audio
+from src.io.audio_io import audio_cache_path, extract_audio
 import tempfile
 
 
@@ -12,8 +12,8 @@ class TestAudioIO(unittest.TestCase):
         cache = audio_cache_path(p)
         self.assertTrue(str(cache).endswith(".cache\\audio\\video.wav") or str(cache).endswith(".cache/audio/video.wav"))
 
-    @patch("src.audio_io.shutil.which")
-    @patch("src.audio_io.subprocess.run")
+    @patch("src.io.audio_io.shutil.which")
+    @patch("src.io.audio_io.subprocess.run")
     def test_extract_audio_calls_ffmpeg(self, mock_run, mock_which):
         mock_which.return_value = "/usr/bin/ffmpeg"
         src = Path("in.mp4")

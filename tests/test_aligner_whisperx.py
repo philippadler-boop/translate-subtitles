@@ -3,7 +3,7 @@ from pathlib import Path
 
 import importlib
 
-from src.aligner import align_with_whisperx
+from src.align.aligner import align_with_whisperx
 
 
 def test_align_with_whisperx_monkeypatched(tmp_path, monkeypatch):

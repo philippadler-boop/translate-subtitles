@@ -4,7 +4,7 @@ from pathlib import Path
 
 import srt
 
-from src.srt_io import read_srt_file, write_srt_file
+from src.io.srt_io import read_srt_file, write_srt_file
 
 
 class TestSrtIO(unittest.TestCase):

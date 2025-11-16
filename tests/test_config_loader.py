@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config_loader import get_from_env_or_json
+from src.config.config_loader import get_from_env_or_json
 
 
 class TestConfigLoader(unittest.TestCase):

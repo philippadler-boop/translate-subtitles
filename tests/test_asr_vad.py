@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 from unittest.mock import patch
 
-from src.asr import transcribe_with_vad
+from src.asr.asr import transcribe_with_vad
 
 
 def _write_short_tone(path: Path, sr: int = 16000):

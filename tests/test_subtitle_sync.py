@@ -1,5 +1,5 @@
 import unittest
-from src.subtitle_sync import generate_srt_from_asr
+from src.subtitles.subtitle_sync import generate_srt_from_asr
 
 
 class TestSubtitleSync(unittest.TestCase):

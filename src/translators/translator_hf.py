@@ -4,7 +4,7 @@ import srt
 from tqdm import tqdm
 from transformers import pipeline
 
-from ..config_loader import get_from_env_or_json
+from ..config.config_loader import get_from_env_or_json
 from ..utils import Progress
 
 

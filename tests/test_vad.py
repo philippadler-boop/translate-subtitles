@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.vad import get_speech_segments
+from src.asr.vad import get_speech_segments
 
 
 def _write_tone_wav(path: Path, durations: list, freq: int = 440, sr: int = 16000):
