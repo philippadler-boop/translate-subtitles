@@ -8,4 +8,9 @@ openai               # GPT-4o
 transformers         # HuggingFace models
 torch                # backend for transformers (CPU is fine)
 sentencepiece        # Required for some HuggingFace tokenizers (e.g., opus-mt)
-sacremoses
+sacremoses           # Additional tokenizer support
+
+# Testing dependencies
+pytest               # Test framework
+pytest-cov           # Coverage reporting
+unittest            # Built-in testing (no additional install needed)
