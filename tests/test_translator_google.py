@@ -60,7 +60,7 @@ class TestTranslatorGoogle(unittest.TestCase):
         mock_translator_instance.translate.return_value = "Translated text"
         mock_google_translator_class.return_value = mock_translator_instance
 
-        result = translate_subtitles_google(self.sample_subtitles, "auto", "de")
+        _result = translate_subtitles_google(self.sample_subtitles, "auto", "de")
 
         # Verify GoogleTranslator was called with source='auto'
         call_args = mock_google_translator_class.call_args_list[0]

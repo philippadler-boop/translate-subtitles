@@ -88,7 +88,7 @@ class TestTranslatorHF(unittest.TestCase):
         mock_translator.return_value = [{"translation_text": "Translated text"}]
         mock_pipeline.return_value = mock_translator
 
-        result = translate_subtitles_hf(self.sample_subtitles, "en", "de")
+        _result = translate_subtitles_hf(self.sample_subtitles, "en", "de")
 
         # Verify custom model was used
         mock_pipeline.assert_called_once_with("translation", model=custom_model)
@@ -107,7 +107,7 @@ class TestTranslatorHF(unittest.TestCase):
         mock_pipeline.return_value = mock_translator
 
         with patch("builtins.print") as mock_print:
-            result = translate_subtitles_hf(self.sample_subtitles, "de", "en")
+            _result = translate_subtitles_hf(self.sample_subtitles, "de", "en")
 
             # Should auto-correct to de-en model
             mock_pipeline.assert_called_once_with(
@@ -136,7 +136,7 @@ class TestTranslatorHF(unittest.TestCase):
         mock_pipeline.return_value = mock_translator
 
         with patch("builtins.print") as mock_print:
-            result = translate_subtitles_hf(self.sample_subtitles, "en", "de")
+            _result = translate_subtitles_hf(self.sample_subtitles, "en", "de")
 
             mock_pipeline.assert_called_once_with(
                 "translation", model="Helsinki-NLP/opus-mt-en-de"

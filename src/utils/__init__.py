@@ -1,3 +1,5 @@
 """Utility helpers package."""
 
-from .progress import *
+from .progress import Progress
+
+__all__ = ["Progress"]

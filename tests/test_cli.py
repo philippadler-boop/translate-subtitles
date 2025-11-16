@@ -121,7 +121,7 @@ class TestCLI(unittest.TestCase):
 
     def test_help_output(self):
         """Test that help output contains examples."""
-        with patch("sys.stdout") as mock_stdout:
+        with patch("sys.stdout"):
             try:
                 self.parser.parse_args(["--help"])
             except SystemExit:
