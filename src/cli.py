@@ -3,6 +3,19 @@ from pathlib import Path
 
 from .io import read_srt_file, write_srt_file
 from .utils import Progress
+import sys
+from pathlib import Path
+
+
+ASCII_HEADER = r"""
+__        __ _  _     _                      ______ _ _
+\ \      / /| || |   | |                    |  ____(_) |
+ \ \ /\ / / | || |__ | | ___  __ _ ___  ___ | |__   _| | ___
+  \ V  V /  | || '_ \| |/ _ \/ _` / __|/ _ \|  __| | | |/ _ \
+    \_/\_/   |_||_.__/|_|\___/\__,_\___|\___/|_|    |_|_|\___/
+
+WhisperFlow - subtitle translation pipeline
+"""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -121,6 +134,10 @@ examples:
 
 
 def main() -> None:
+    # Interactive mode when no CLI args provided
+    if len(sys.argv) == 1:
+        return _interactive_launcher()
+
     parser = build_parser()
     args = parser.parse_args()
 
@@ -263,3 +280,89 @@ def main() -> None:
     print(f"Writing:  {output_path}")
     write_srt_file(translated, output_path)
     print("Done.")
+
+
+def _interactive_launcher() -> None:
+    """Simple interactive CLI for choosing input and running the pipeline."""
+    print(ASCII_HEADER)
+
+    root = Path(__file__).resolve().parents[1]
+    workspace_dir = root / "workspaces"
+    if not workspace_dir.is_dir():
+        print(f"No workspace directory found at {workspace_dir}")
+        return
+
+    input_types = {"video": [".mp4", ".mkv", ".mov"], "audio": [".wav", ".mp3", ".m4a", ".flac"], "srt": [".srt"]}
+
+    # Ask which input type
+    while True:
+        choice = input("Select input type (video/audio/srt): ").strip().lower()
+        if choice in input_types:
+            break
+        print("Please enter one of: video, audio, srt")
+
+    exts = input_types[choice]
+    files = [p for p in workspace_dir.iterdir() if p.suffix.lower() in exts]
+    if not files:
+        print(f"No {choice} files found in {workspace_dir}")
+        return
+
+    print(f"Found {len(files)} {choice} files:")
+    for i, p in enumerate(files, start=1):
+        print(f"  {i}) {p.name}")
+
+    while True:
+        sel = input(f"Pick a file [1-{len(files)}]: ").strip()
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(files):
+                selected = files[idx]
+                break
+        except Exception:
+            pass
+        print("Invalid selection")
+
+    print(f"Selected: {selected}")
+
+    # Offer actions
+    if choice == "srt":
+        actions = {"1": "Translate subtitles"}
+    else:
+        actions = {"1": "Regenerate + Translate"}
+
+    actions["q"] = "Quit"
+
+    print("Available actions:")
+    for k, v in actions.items():
+        print(f"  {k}) {v}")
+
+    while True:
+        act = input("Choose action: ").strip().lower()
+        if act in actions:
+            break
+        print("Invalid action")
+
+    if act == "q":
+        print("Cancelled")
+        return
+
+    # Ask for target language (required by parser)
+    tgt = input("Target language code (e.g. en, de) [en]: ").strip() or "en"
+
+    # Build args and run parsed pipeline
+    parser = build_parser()
+    args_list = [str(selected), "--tgt-lang", tgt]
+    if choice != "srt":
+        args_list.append("--regenerate")
+
+    print(f"Running pipeline with args: {args_list}")
+    args = parser.parse_args(args_list)
+    # call main logic by reusing the current main() flow: set sys.argv and recurse
+    # to avoid duplicating logic we call the non-interactive path by invoking
+    # the run via modifying sys.argv temporarily
+    old_argv = sys.argv
+    try:
+        sys.argv = [old_argv[0]] + args_list
+        main()
+    finally:
+        sys.argv = old_argv
