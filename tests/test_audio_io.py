@@ -21,8 +21,8 @@ class TestAudioIO(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "out.wav"
 
-        # simulate subprocess returning successfully
-        mock_run.return_value = None
+            # simulate subprocess returning successfully
+            mock_run.return_value = None
 
             # Should not raise (we're mocking ffmpeg)
             r = extract_audio(src, out, force=True)

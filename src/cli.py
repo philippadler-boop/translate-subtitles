@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from .srt_io import read_srt_file, write_srt_file
+from .progress import Progress
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -147,9 +148,19 @@ def main() -> None:
             raise SystemExit(f"Regenerate requested but required modules missing: {e}")
 
         src_path = input_path
+        # Audio extraction progress
+        p_audio = Progress("Audio")
+        p_audio.start(total=1)
         wav = audio_cache_path(src_path)
         wav = extract_audio(src_path, wav)
+        p_audio.update(1, "extracted")
+        p_audio.finish()
+
+        # ASR progress (unknown total)
+        p_asr = Progress("ASR")
+        p_asr.start()
         asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
+        p_asr.finish("asr complete")
 
         # Optional forced alignment
         if args.align:
@@ -158,9 +169,12 @@ def main() -> None:
                 try:
                     from .aligner import align_with_whisperx
 
+                    p_align = Progress("Alignment")
+                    p_align.start()
                     aligned = align_with_whisperx(wav, asr_out.get("segments", []), device=args.device)
                     # aligned may be a list of segments with word timings; adapt to generator
                     asr_out = {"segments": aligned}
+                    p_align.finish("aligned")
                 except Exception as e:
                     raise SystemExit(f"Alignment failed: {e}")
             else:
@@ -170,13 +184,17 @@ def main() -> None:
         if args.export_words:
             try:
                 from .visualizer import extract_words_from_aligned_segments, write_words_json, write_simple_html_timeline
-
+                p_words = Progress("Export Words")
+                p_words.start()
                 words = extract_words_from_aligned_segments(asr_out.get("segments", []))
                 out_json = Path(args.export_words)
                 write_words_json(words, out_json)
+                p_words.update(1, "json written")
                 if args.visualize:
                     html_out = out_json.with_suffix(".html")
                     write_simple_html_timeline(out_json, html_out)
+                    p_words.update(1, "html written")
+                p_words.finish("export complete")
             except Exception as e:
                 raise SystemExit(f"Exporting words/visualization failed: {e}")
 
@@ -189,7 +207,8 @@ def main() -> None:
         print(f"Reading:  {input_path}")
         subtitles = read_srt_file(input_path)
 
-    # Now translate `subtitles` using selected engine
+    # Now translate `subtitles` using selected engine; provide Progress to translators
+    p_trans = Progress("Translate")
     if engine == "google":
         from .translators.translator_google import translate_subtitles_google
 
@@ -197,6 +216,7 @@ def main() -> None:
             subtitles=subtitles,
             source_lang=args.src_lang,
             target_lang=args.tgt_lang,
+            progress=p_trans,
         )
 
     elif engine == "deepl":
@@ -206,6 +226,7 @@ def main() -> None:
             subtitles=subtitles,
             source_lang=args.src_lang,
             target_lang=args.tgt_lang,
+            progress=p_trans,
         )
 
     elif engine == "gpt":
@@ -215,6 +236,7 @@ def main() -> None:
             subtitles=subtitles,
             source_lang=args.src_lang,
             target_lang=args.tgt_lang,
+            progress=p_trans,
         )
 
     elif engine == "hf":
@@ -224,6 +246,7 @@ def main() -> None:
             subtitles=subtitles,
             source_lang=args.src_lang,
             target_lang=args.tgt_lang,
+            progress=p_trans,
         )
     else:
         raise SystemExit(f"Unknown engine: {engine}")

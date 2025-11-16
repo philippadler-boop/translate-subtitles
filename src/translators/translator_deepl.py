@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import srt
 import deepl
@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from ..config_loader import get_from_env_or_json
 from .translator_google import translate_subtitles_google
+from ..progress import Progress
 
 
 MAX_RETRIES = 5   # retry attempts for DeepL rate-limit/high-load errors
@@ -16,6 +17,7 @@ def translate_subtitles_deepl(
     subtitles: List[srt.Subtitle],
     source_lang: str,
     target_lang: str,
+    progress: Optional[Progress] = None,
 ) -> List[srt.Subtitle]:
     """
     Translate subtitles using DeepL API with retry + exponential backoff.
@@ -53,6 +55,66 @@ def translate_subtitles_deepl(
     translated: List[srt.Subtitle] = []
 
     # === MAIN TRANSLATION LOOP ===
+    if progress is not None:
+        progress.start(total=len(subtitles))
+        for idx, sub in enumerate(subtitles):
+            text = sub.content
+
+            # RETRY / BACKOFF LOOP
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    result_obj = translator.translate_text(
+                        text,
+                        source_lang=src,
+                        target_lang=tgt,
+                    )
+                    result = result_obj.text
+                    break  # success
+                except deepl.TooManyRequestsException as e:
+                    # DeepL is rate-limiting us, so we wait and retry
+                    wait_seconds = 2 ** (attempt - 1)
+                    print(
+                        f"[DeepL] Too many requests (attempt {attempt}/{MAX_RETRIES}). "
+                        f"Retrying in {wait_seconds} seconds..."
+                    )
+                    time.sleep(wait_seconds)
+                except deepl.DeepLException as e:
+                    # Other DeepL errors → stop retrying this line
+                    print(f"[DeepL] Error on subtitle {sub.index}: {e}")
+                    result = text  # keep original line
+                    break
+            else:
+                # We only hit this 'else' if all retries failed for rate-limiting
+                print("[DeepL] DeepL still overloaded after retries.")
+                print("[DeepL] Falling back to Google for remaining subtitles...")
+
+                remaining = subtitles[idx:]
+                google_rest = translate_subtitles_google(
+                    remaining,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    progress=None,
+                )
+                translated.extend(google_rest)
+                progress.finish("fallback to google")
+                return translated
+
+            # Append the successfully translated (or fallback) subtitle
+            translated.append(
+                srt.Subtitle(
+                    index=sub.index,
+                    start=sub.start,
+                    end=sub.end,
+                    content=result,
+                    proprietary=sub.proprietary,
+                )
+            )
+            progress.update(1, f"line {sub.index}")
+
+        progress.finish("translation complete")
+        return translated
+
+    # fallback to original tqdm-based behavior
     for idx, sub in enumerate(tqdm(subtitles, desc="DeepL Translating", unit="line")):
         text = sub.content
 

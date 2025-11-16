@@ -1,10 +1,11 @@
-from typing import List
+from typing import List, Optional
 
 import srt
 from tqdm import tqdm
 from transformers import pipeline
 
 from ..config_loader import get_from_env_or_json
+from ..progress import Progress
 
 
 def _default_hf_model_for_pair(source_lang: str, target_lang: str) -> str:
@@ -35,6 +36,7 @@ def translate_subtitles_hf(
     subtitles: List[srt.Subtitle],
     source_lang: str,
     target_lang: str,
+    progress: Optional[Progress] = None,
 ) -> List[srt.Subtitle]:
     """
     Translate subtitles using a HuggingFace translation pipeline.
@@ -72,6 +74,31 @@ def translate_subtitles_hf(
     translator = pipeline("translation", model=model_name)
 
     translated: List[srt.Subtitle] = []
+
+    if progress is not None:
+        progress.start(total=len(subtitles))
+        for sub in subtitles:
+            text = sub.content
+            try:
+                out = translator(text)
+                result = out[0]["translation_text"]
+            except Exception as e:
+                print(f"[HF] Error on subtitle {sub.index}: {e}")
+                result = text
+
+            translated.append(
+                srt.Subtitle(
+                    index=sub.index,
+                    start=sub.start,
+                    end=sub.end,
+                    content=result,
+                    proprietary=sub.proprietary,
+                )
+            )
+            progress.update(1, f"line {sub.index}")
+
+        progress.finish("translation complete")
+        return translated
 
     for sub in tqdm(subtitles, desc="HF Translating", unit="line"):
         text = sub.content

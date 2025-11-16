@@ -1,14 +1,17 @@
-from typing import List
+from typing import List, Optional
 
 import srt
 from deep_translator import GoogleTranslator
 from tqdm import tqdm
+
+from ..progress import Progress
 
 
 def translate_subtitles_google(
     subtitles: List[srt.Subtitle],
     source_lang: str,
     target_lang: str,
+    progress: Optional[Progress] = None,
 ) -> List[srt.Subtitle]:
     """
     Translate subtitles using GoogleTranslator from deep-translator.
@@ -22,22 +25,45 @@ def translate_subtitles_google(
 
     translated: List[srt.Subtitle] = []
 
-    for sub in tqdm(subtitles, desc="Google Translating", unit="line"):
-        text = sub.content
-        try:
-            result = translator.translate(text)
-        except Exception as e:
-            print(f"[Google] Error on subtitle {sub.index}: {e}")
-            result = text  # fallback
+    # If a Progress object was provided, use it; otherwise fall back to tqdm
+    if progress is not None:
+        progress.start(total=len(subtitles))
+        for sub in subtitles:
+            text = sub.content
+            try:
+                result = translator.translate(text)
+            except Exception as e:
+                print(f"[Google] Error on subtitle {sub.index}: {e}")
+                result = text
 
-        translated.append(
-            srt.Subtitle(
-                index=sub.index,
-                start=sub.start,
-                end=sub.end,
-                content=result,
-                proprietary=sub.proprietary,
+            translated.append(
+                srt.Subtitle(
+                    index=sub.index,
+                    start=sub.start,
+                    end=sub.end,
+                    content=result,
+                    proprietary=sub.proprietary,
+                )
             )
-        )
+            progress.update(1, f"line {sub.index}")
+        progress.finish("translation complete")
+    else:
+        for sub in tqdm(subtitles, desc="Google Translating", unit="line"):
+            text = sub.content
+            try:
+                result = translator.translate(text)
+            except Exception as e:
+                print(f"[Google] Error on subtitle {sub.index}: {e}")
+                result = text  # fallback
+
+            translated.append(
+                srt.Subtitle(
+                    index=sub.index,
+                    start=sub.start,
+                    end=sub.end,
+                    content=result,
+                    proprietary=sub.proprietary,
+                )
+            )
 
     return translated
