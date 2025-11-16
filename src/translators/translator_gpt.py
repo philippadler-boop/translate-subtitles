@@ -5,7 +5,7 @@ from tqdm import tqdm
 from openai import OpenAI
 
 from ..config_loader import get_from_env_or_json
-from ..progress import Progress
+from ..utils import Progress
 
 
 def translate_subtitles_gpt(

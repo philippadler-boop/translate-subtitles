@@ -4,7 +4,7 @@ import srt
 from deep_translator import GoogleTranslator
 from tqdm import tqdm
 
-from ..progress import Progress
+from ..utils import Progress
 
 
 def translate_subtitles_google(

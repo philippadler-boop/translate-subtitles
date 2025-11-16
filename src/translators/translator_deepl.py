@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from ..config_loader import get_from_env_or_json
 from .translator_google import translate_subtitles_google
-from ..progress import Progress
+from ..utils import Progress
 
 
 MAX_RETRIES = 5   # retry attempts for DeepL rate-limit/high-load errors

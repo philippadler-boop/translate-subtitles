@@ -5,7 +5,7 @@ from tqdm import tqdm
 from transformers import pipeline
 
 from ..config_loader import get_from_env_or_json
-from ..progress import Progress
+from ..utils import Progress
 
 
 def _default_hf_model_for_pair(source_lang: str, target_lang: str) -> str:

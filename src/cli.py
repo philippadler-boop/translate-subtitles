@@ -1,8 +1,8 @@
 import argparse
 from pathlib import Path
 
-from .srt_io import read_srt_file, write_srt_file
-from .progress import Progress
+from .io import read_srt_file, write_srt_file
+from .utils import Progress
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,9 +141,9 @@ def main() -> None:
     # If regenerate requested, run ASR pipeline first to create subtitles
     if args.regenerate:
         try:
-            from .audio_io import audio_cache_path, extract_audio
-            from .asr import transcribe_with_vad
-            from .subtitle_sync import generate_srt_from_asr
+            from .io import audio_cache_path, extract_audio
+            from .asr.asr import transcribe_with_vad
+            from .subtitles.subtitle_sync import generate_srt_from_asr
         except Exception as e:
             raise SystemExit(f"Regenerate requested but required modules missing: {e}")
 
@@ -167,7 +167,7 @@ def main() -> None:
             method = args.align_method or "whisperx"
             if method == "whisperx":
                 try:
-                    from .aligner import align_with_whisperx
+                    from .align.aligner import align_with_whisperx
 
                     p_align = Progress("Alignment")
                     p_align.start()
@@ -183,7 +183,11 @@ def main() -> None:
         # Optionally export words & visualization
         if args.export_words:
             try:
-                from .visualizer import extract_words_from_aligned_segments, write_words_json, write_simple_html_timeline
+                from .visualizer.visualizer import (
+                    extract_words_from_aligned_segments,
+                    write_words_json,
+                    write_simple_html_timeline,
+                )
                 p_words = Progress("Export Words")
                 p_words.start()
                 words = extract_words_from_aligned_segments(asr_out.get("segments", []))
