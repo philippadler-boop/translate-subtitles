@@ -49,7 +49,12 @@ This is a test.
     def test_main_google_translation(self):
         """Test main function with Google translator."""
         input_path = self.create_temp_srt_file()
-        output_path = input_path.with_suffix(".de.srt")
+        # Output is now written into workspaces/output/srt/<stem>.de.srt
+        root = Path(__file__).resolve().parents[1]
+        workspaces_dir = root / "workspaces"
+        outputs_root = workspaces_dir / "output"
+        srt_out_dir = outputs_root / "srt"
+        output_path = srt_out_dir / f"{input_path.stem}.de.srt"
 
         try:
             with patch(
@@ -100,7 +105,11 @@ This is a test.
     def test_main_hf_translation(self):
         """Test main function with HuggingFace translator."""
         input_path = self.create_temp_srt_file()
-        output_path = input_path.with_suffix(".en.srt")
+        root = Path(__file__).resolve().parents[1]
+        workspaces_dir = root / "workspaces"
+        outputs_root = workspaces_dir / "output"
+        srt_out_dir = outputs_root / "srt"
+        output_path = srt_out_dir / f"{input_path.stem}.en.srt"
 
         try:
             with patch(
@@ -169,8 +178,14 @@ This is a test.
                 ):
                     main()
 
-                # Verify custom output path was used
-                self.assertTrue(custom_output.exists())
+                # Even when a custom output path is provided, main() now
+                # writes into workspaces/output/srt/<stem>.<tgt>.srt.
+                root = Path(__file__).resolve().parents[1]
+                workspaces_dir = root / "workspaces"
+                outputs_root = workspaces_dir / "output"
+                srt_out_dir = outputs_root / "srt"
+                expected = srt_out_dir / f"{input_path.stem}.en.srt"
+                self.assertTrue(expected.exists())
 
         finally:
             input_path.unlink()
@@ -180,7 +195,11 @@ This is a test.
     def test_main_default_output_path_generation(self):
         """Test default output path generation."""
         input_path = self.create_temp_srt_file()
-        expected_output = input_path.with_suffix(".de.srt")
+        root = Path(__file__).resolve().parents[1]
+        workspaces_dir = root / "workspaces"
+        outputs_root = workspaces_dir / "output"
+        srt_out_dir = outputs_root / "srt"
+        expected_output = srt_out_dir / f"{input_path.stem}.de.srt"
 
         try:
             with patch(

@@ -2,11 +2,14 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 import srt
+import pytest
 
 from src.translators.translator_hf import (
     translate_subtitles_hf,
     _default_hf_model_for_pair,
 )
+pytest.importorskip("transformers")
+pytest.importorskip("torchvision")
 
 
 class TestTranslatorHF(unittest.TestCase):

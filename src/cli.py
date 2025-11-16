@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 
 from .io import read_srt_file, write_srt_file
@@ -19,6 +20,25 @@ ASCII_HEADER = r"""
                                                              
 WhisperFlow - subtitle translation pipeline
 """
+
+# Best-effort CUDA DLL discovery for Windows: ensure the CUDA v13 bin/x64 folder
+# is on PATH so `ctranslate2` can locate cublasLt64_13.dll when using device="cuda".
+_CUDA_BIN_CANDIDATES = [
+    r"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+]
+
+for _cuda_bin in _CUDA_BIN_CANDIDATES:
+    try:
+        p = Path(_cuda_bin)
+        if p.is_dir():
+            current_path = os.environ.get("PATH", "")
+            # Only prepend if not already present to avoid PATH growth.
+            if str(p) not in current_path.split(os.pathsep):
+                os.environ["PATH"] = str(p) + os.pathsep + current_path
+            break
+    except Exception:
+        # Do not fail CLI import if CUDA folder is missing or inaccessible.
+        pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -148,18 +168,36 @@ def main() -> None:
     if not input_path.is_file():
         raise SystemExit(f"Input file not found: {input_path}")
 
-    if args.output:
-        output_path = Path(args.output)
-    else:
-        # example: movie.srt -> movie.de.srt
-        output_path = input_path.with_suffix(f".{args.tgt_lang}.srt")
-
     engine = args.engine
     print(f"Using engine: {engine}")
     print(f"Source language: {args.src_lang} | Target language: {args.tgt_lang}")
 
     # If regenerate requested, run ASR pipeline first to create subtitles
     if args.regenerate:
+        # If running interactively, ask the user which device and ASR model to use.
+        # This allows choosing GPU/CPU and model size at runtime even when
+        # the CLI was invoked with non-interactive defaults.
+        try:
+            interactive = sys.stdin.isatty()
+        except Exception:
+            interactive = False
+
+        if interactive:
+            # Ask for device choice
+            dev_prompt = f"ASR device (auto/cpu/cuda) [{args.device}]: "
+            dev_in = input(dev_prompt).strip()
+            if dev_in:
+                if dev_in not in ("auto", "cpu", "cuda"):
+                    print("Unknown device choice, using default.")
+                else:
+                    args.device = dev_in
+
+            # Ask for ASR model
+            model_prompt = f"ASR model (tiny/small/medium/large) [{args.asr_model}]: "
+            model_in = input(model_prompt).strip()
+            if model_in:
+                args.asr_model = model_in
+
         try:
             from .io import audio_cache_path, extract_audio
             from .asr.asr import transcribe_with_vad
@@ -168,10 +206,25 @@ def main() -> None:
             raise SystemExit(f"Regenerate requested but required modules missing: {e}")
 
         src_path = input_path
+
+        # Compute per-input output base paths under workspaces/output
+        root = Path(__file__).resolve().parents[1]
+        workspaces_dir = root / "workspaces"
+        outputs_root = workspaces_dir / "output"
+        outputs_root.mkdir(parents=True, exist_ok=True)
+
+        base_name = src_path.stem
+        # Audio and SRT outputs: reuse base name and place into
+        # workspaces/output/audio and workspaces/output/srt
+        audio_out_dir = outputs_root / "audio"
+        audio_out_dir.mkdir(parents=True, exist_ok=True)
+        srt_out_dir = outputs_root / "srt"
+        srt_out_dir.mkdir(parents=True, exist_ok=True)
         # Audio extraction progress
         p_audio = Progress("Audio")
         p_audio.start(total=1)
-        wav = audio_cache_path(src_path)
+        # Extract audio into workspaces/output/audio/<basename>.wav
+        wav = audio_out_dir / f"{base_name}.wav"
         wav = extract_audio(src_path, wav)
         p_audio.update(1, "extracted")
         p_audio.finish()
@@ -227,8 +280,12 @@ def main() -> None:
             except Exception as e:
                 raise SystemExit(f"Exporting words/visualization failed: {e}")
 
-        # Generate initial subtitles from ASR output
+        # Generate initial subtitles from ASR output and persist original-language SRT
         subtitles = generate_srt_from_asr(asr_out)
+        # Use the configured source language or "auto" in the filename
+        src_lang_tag = (args.src_lang or "auto").replace(" ", "_")
+        original_srt_path = srt_out_dir / f"{base_name}.{src_lang_tag}.srt"
+        write_srt_file(subtitles, original_srt_path)
 
         # If a translation target is requested, fall through to translation step
     else:
@@ -280,8 +337,17 @@ def main() -> None:
     else:
         raise SystemExit(f"Unknown engine: {engine}")
 
-    print(f"Writing:  {output_path}")
-    write_srt_file(translated, output_path)
+    # Always write translated SRTs only into workspaces/output/srt
+    # so that all outputs are grouped in a single location.
+    root = Path(__file__).resolve().parents[1]
+    workspaces_dir = root / "workspaces"
+    outputs_root = workspaces_dir / "output"
+    srt_out_dir = outputs_root / "srt"
+    srt_out_dir.mkdir(parents=True, exist_ok=True)
+
+    translated_out = srt_out_dir / f"{input_path.stem}.{args.tgt_lang}.srt"
+    print(f"Writing:  {translated_out}")
+    write_srt_file(translated, translated_out)
     print("Done.")
 
 
@@ -341,34 +407,28 @@ def _interactive_launcher() -> None:
 
     print(f"Selected: {selected}")
 
-    # Offer actions
+    # Only a single action is currently supported; no quit option here.
     if choice == "srt":
-        actions = {"1": "Translate subtitles"}
+        action_label = "Translate subtitles"
     else:
-        actions = {"1": "Regenerate + Translate"}
-
-    actions["q"] = "Quit"
+        action_label = "Regenerate + Translate"
 
     print("Available actions:")
-    for k, v in actions.items():
-        print(f"  {k}) {v}")
+    print(f"  1) {action_label}")
 
     while True:
-        act = input("Choose action: ").strip().lower()
-        if act in actions:
+        act = input("Choose action [1]: ").strip().lower() or "1"
+        if act == "1":
             break
         print("Invalid action")
 
-    if act == "q":
-        print("Cancelled")
-        return
-
-    # Ask for target language (required by parser)
+    # Ask for source and target language
+    src = input("Source language code (e.g. de, en or 'auto') [auto]: ").strip() or "auto"
     tgt = input("Target language code (e.g. en, de) [en]: ").strip() or "en"
 
     # Build args and run parsed pipeline
     parser = build_parser()
-    args_list = [str(selected), "--tgt-lang", tgt]
+    args_list = [str(selected), "--src-lang", src, "--tgt-lang", tgt]
     if choice != "srt":
         # Ask ASR device preference: prefer GPU when available, otherwise CPU
         try:
@@ -378,8 +438,22 @@ def _interactive_launcher() -> None:
         except Exception:
             default_device = "cpu"
 
+        # Prompt user for device choice (show default)
+        dev_in = input(f"ASR device (auto/cpu/cuda) [{default_device}]: ").strip()
+        if not dev_in:
+            dev_in = default_device
+        if dev_in not in ("auto", "cpu", "cuda"):
+            print("Unknown device choice, using default.")
+            dev_in = default_device
+
+        # Prompt user for ASR model (suggest 'small')
+        model_default = "small"
+        model_in = input(f"ASR model (tiny/small/medium/large) [{model_default}]: ").strip()
+        if not model_in:
+            model_in = model_default
+
         args_list.append("--regenerate")
-        args_list.extend(["--device", default_device])
+        args_list.extend(["--device", dev_in, "--asr-model", model_in])
 
     print(f"Running pipeline with args: {args_list}")
     args = parser.parse_args(args_list)

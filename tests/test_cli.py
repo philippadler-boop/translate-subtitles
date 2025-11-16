@@ -84,15 +84,11 @@ class TestCLI(unittest.TestCase):
         try:
             args = self.parser.parse_args([temp_path, "--tgt-lang", "de"])
 
-            # Test the output path logic from main() - simulate it
-            input_path = Path(args.input)
-            if args.output:
-                output_path = Path(args.output)
-            else:
-                output_path = input_path.with_suffix(f".{args.tgt_lang}.srt")
-
-            expected_output = input_path.with_suffix(".de.srt")
-            self.assertEqual(output_path, expected_output)
+            # The parser itself does not enforce output paths anymore;
+            # main() now always writes translated files into
+            # workspaces/output/srt/<input_stem>.<tgt_lang>.srt.
+            # Here we only verify that parsing succeeds and output is None.
+            self.assertIsNone(args.output)
 
         finally:
             Path(temp_path).unlink()
