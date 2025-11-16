@@ -24,18 +24,22 @@ def transcribe_with_whisper(
     model_name: str = "small",
     device: str = "auto",
     compute_type: str = "float32",
+    model_instance=None,
 ) -> Dict[str, List[dict]]:
     """Transcribe `wav_path` using faster-whisper and return segments.
 
     Returns a dict: {"segments": [ {"start": float, "end": float, "text": str}, ... ] }
     """
-    if WhisperModel is None:
-        raise RuntimeError(
-            "faster-whisper is not installed. Please install it to use local ASR."
-        )
+    if model_instance is None:
+        if WhisperModel is None:
+            raise RuntimeError(
+                "faster-whisper is not installed. Please install it to use local ASR."
+            )
 
-    device = _choose_device(device)
-    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+        device = _choose_device(device)
+        model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    else:
+        model = model_instance
 
     segments = []
     # faster-whisper model.transcribe may return different shapes depending on version:
@@ -52,20 +56,25 @@ def transcribe_with_whisper(
         raw_segments = []
         try:
             for item in result:
-                # item may itself be a segment dict/object, or a generator yielding segments
-                if isinstance(item, dict) and ("start" in item or "text" in item):
-                    raw_segments.append(item)
-                else:
-                    # try to iterate sub-items
-                    try:
-                        for sub in item:
-                            if isinstance(sub, dict) and (
-                                "start" in sub or "text" in sub
-                            ):
-                                raw_segments.append(sub)
-                    except TypeError:
-                        # not iterable, ignore
-                        pass
+                    # item may itself be a segment dict/object, or a generator yielding segments
+                    if isinstance(item, dict) and ("start" in item or "text" in item):
+                        raw_segments.append(item)
+                    else:
+                        # try to iterate sub-items (generator yields segment-like objects)
+                        try:
+                            for sub in item:
+                                # support both dict-like and object-like segment representations
+                                if isinstance(sub, dict) and (
+                                    "start" in sub or "text" in sub
+                                ):
+                                    raw_segments.append(sub)
+                                elif hasattr(sub, "start") or hasattr(sub, "text"):
+                                    raw_segments.append(sub)
+                        except TypeError:
+                            # item not iterable; it might be an object-like segment
+                            if hasattr(item, "start") or hasattr(item, "text"):
+                                raw_segments.append(item)
+                            # otherwise ignore
         except TypeError:
             # not iterable; fall back to empty
             raw_segments = []
@@ -114,8 +123,23 @@ def transcribe_with_vad(
     if not segs:
         # fallback: transcribe whole file directly
         return transcribe_with_whisper(
-            wav_path, model_name=model_name, device=device, compute_type=compute_type
+            wav_path,
+            model_name=model_name,
+            device=device,
+            compute_type=compute_type,
         )
+
+    # Try to create a single model instance to reuse across chunks to avoid
+    # expensive model reinitialization on every chunk.
+    model_instance = None
+    try:
+        if WhisperModel is not None:
+            model_device = _choose_device(device)
+            model_instance = WhisperModel(model_name, device=model_device, compute_type=compute_type)
+    except Exception:
+        # If model construction fails here we'll fall back to creating per-chunk
+        # instances by letting transcribe_with_whisper create them.
+        model_instance = None
 
     # open source wave for slicing
     with wave.open(str(wav_path), "rb") as src_wf:
@@ -145,6 +169,7 @@ def transcribe_with_vad(
                     model_name=model_name,
                     device=device,
                     compute_type=compute_type,
+                    model_instance=model_instance,
                 )
                 # adjust timestamps
                 for seg in chunk_result.get("segments", []):

@@ -8,12 +8,15 @@ from pathlib import Path
 
 
 ASCII_HEADER = r"""
-__        __ _  _     _                      ______ _ _
-\ \      / /| || |   | |                    |  ____(_) |
- \ \ /\ / / | || |__ | | ___  __ _ ___  ___ | |__   _| | ___
-  \ V  V /  | || '_ \| |/ _ \/ _` / __|/ _ \|  __| | | |/ _ \
-    \_/\_/   |_||_.__/|_|\___/\__,_\___|\___/|_|    |_|_|\___/
-
+ __          ___     _                     ______ _               
+ \ \        / / |   (_)                   |  ____| |              
+  \ \  /\  / /| |__  _ ___ _ __   ___ _ __| |__  | | _____      __
+   \ \/  \/ / | '_ \| / __| '_ \ / _ \ '__|  __| | |/ _ \ \ /\ / /
+    \  /\  /  | | | | \__ \ |_) |  __/ |  | |    | | (_) \ V  V / 
+     \/  \/   |_| |_|_|___/ .__/ \___|_|  |_|    |_|\___/ \_/\_/  
+                          | |                                     
+                          |_| 
+                                                             
 WhisperFlow - subtitle translation pipeline
 """
 
@@ -302,9 +305,23 @@ def _interactive_launcher() -> None:
         print("Please enter one of: video, audio, srt")
 
     exts = input_types[choice]
-    files = [p for p in workspace_dir.iterdir() if p.suffix.lower() in exts]
+
+    # Prefer a subdirectory named after the choice (e.g. workspaces/video)
+    candidate_dir = workspace_dir / choice
+    if candidate_dir.is_dir():
+        search_dir = candidate_dir
+    else:
+        search_dir = workspace_dir
+
+    # Collect matching files (non-recursive if using a dedicated folder,
+    # otherwise search recursively so users can organize files arbitrarily)
+    if search_dir == candidate_dir:
+        files = [p for p in search_dir.iterdir() if p.suffix.lower() in exts]
+    else:
+        files = [p for p in search_dir.rglob("*") if p.suffix.lower() in exts]
+
     if not files:
-        print(f"No {choice} files found in {workspace_dir}")
+        print(f"No {choice} files found in {search_dir}")
         return
 
     print(f"Found {len(files)} {choice} files:")
@@ -353,7 +370,16 @@ def _interactive_launcher() -> None:
     parser = build_parser()
     args_list = [str(selected), "--tgt-lang", tgt]
     if choice != "srt":
+        # Ask ASR device preference: prefer GPU when available, otherwise CPU
+        try:
+            import torch
+
+            default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            default_device = "cpu"
+
         args_list.append("--regenerate")
+        args_list.extend(["--device", default_device])
 
     print(f"Running pipeline with args: {args_list}")
     args = parser.parse_args(args_list)

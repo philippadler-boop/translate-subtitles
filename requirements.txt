@@ -10,6 +10,7 @@ torch                # backend for transformers (CPU is fine)
 sentencepiece        # Required for some HuggingFace tokenizers (e.g., opus-mt)
 sacremoses           # Additional tokenizer support
 faster-whisper       # Fast local Whisper implementation for ASR
+ctranslate2==4.6.1   # use newest ctranslate2 (CUDA-13 compatible)
 ffmpeg-python        # Python bindings for ffmpeg (audio extraction helper)
 webrtcvad            # Voice Activity Detection for segmentation
 
