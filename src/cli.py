@@ -80,6 +80,31 @@ examples:
     )
 
     parser.add_argument(
+        "--align",
+        action="store_true",
+        help="Run forced alignment on ASR output to get word-level timestamps (requires whisperx).",
+    )
+
+    parser.add_argument(
+        "--align-method",
+        choices=["whisperx"],
+        default=None,
+        help="Alignment backend to use when --align is specified. Default: whisperx if available.",
+    )
+
+    parser.add_argument(
+        "--export-words",
+        help="Path to write word-level JSON output (defaults to <output>.words.json).",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Export a simple HTML timeline visualization of word timings alongside JSON.",
+    )
+
+    parser.add_argument(
         "--asr-model",
         default="small",
         help="ASR model to use for regeneration (e.g. small, medium, large).",
@@ -157,8 +182,8 @@ def main() -> None:
     if args.regenerate:
         try:
             from .audio_io import audio_cache_path, extract_audio
-                from .asr import transcribe_with_vad
-                from .subtitle_sync import generate_srt_from_asr
+            from .asr import transcribe_with_vad
+            from .subtitle_sync import generate_srt_from_asr
         except Exception as e:
             raise SystemExit(f"Regenerate requested but required modules missing: {e}")
 
@@ -166,8 +191,39 @@ def main() -> None:
         wav = audio_cache_path(src_path)
         wav = extract_audio(src_path, wav)
         asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
+
+        # Optional forced alignment
+        if args.align:
+            method = args.align_method or "whisperx"
+            if method == "whisperx":
+                try:
+                    from .aligner import align_with_whisperx
+
+                    aligned = align_with_whisperx(wav, asr_out.get("segments", []), device=args.device)
+                    # aligned may be a list of segments with word timings; adapt to generator
+                    # For backward compatibility we turn aligned into the same dict shape
+                    asr_out = {"segments": aligned}
+                except Exception as e:
+                    raise SystemExit(f"Alignment failed: {e}")
+            else:
+                raise SystemExit(f"Unknown alignment method: {method}")
+
         translated = generate_srt_from_asr(asr_out)
-    
+
+        # Optional exports: word-level JSON and visualization
+        if args.export_words:
+            try:
+                from .visualizer import extract_words_from_aligned_segments, write_words_json, write_simple_html_timeline
+
+                words = extract_words_from_aligned_segments(asr_out.get("segments", []))
+                out_json = Path(args.export_words)
+                write_words_json(words, out_json)
+                if args.visualize:
+                    html_out = out_json.with_suffix(".html")
+                    # write HTML next to JSON and copy JSON filename reference
+                    write_simple_html_timeline(out_json, html_out)
+            except Exception as e:
+                raise SystemExit(f"Exporting words/visualization failed: {e}")
 
     print(f"Writing:  {output_path}")
     write_srt_file(translated, output_path)

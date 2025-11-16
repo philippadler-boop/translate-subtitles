@@ -62,8 +62,12 @@ pip-wheel-metadata/
 tests/output/
 
 # === Audio extraction artifacts ===
-out.wav
 *.wav
+
+# === Video artifacts ===
+*.mp4
+*.mkv
+*.avi
 
 # === Test utilities ===
 run_tests.py
