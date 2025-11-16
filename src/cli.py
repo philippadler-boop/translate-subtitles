@@ -31,7 +31,7 @@ examples:
 
     parser.add_argument(
         "input",
-        help="Path to the input .srt file.",
+        help="Path to the input file (video/audio/.srt). If a video or audio file is provided, use `--regenerate` to extract audio and generate subtitles.",
     )
 
     parser.add_argument(
@@ -133,13 +133,63 @@ def main() -> None:
         # example: movie.srt -> movie.de.srt
         output_path = input_path.with_suffix(f".{args.tgt_lang}.srt")
 
-    print(f"Reading:  {input_path}")
-    subtitles = read_srt_file(input_path)
-
     engine = args.engine
     print(f"Using engine: {engine}")
     print(f"Source language: {args.src_lang} | Target language: {args.tgt_lang}")
 
+    # If regenerate requested, run ASR pipeline first to create subtitles
+    if args.regenerate:
+        try:
+            from .audio_io import audio_cache_path, extract_audio
+            from .asr import transcribe_with_vad
+            from .subtitle_sync import generate_srt_from_asr
+        except Exception as e:
+            raise SystemExit(f"Regenerate requested but required modules missing: {e}")
+
+        src_path = input_path
+        wav = audio_cache_path(src_path)
+        wav = extract_audio(src_path, wav)
+        asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
+
+        # Optional forced alignment
+        if args.align:
+            method = args.align_method or "whisperx"
+            if method == "whisperx":
+                try:
+                    from .aligner import align_with_whisperx
+
+                    aligned = align_with_whisperx(wav, asr_out.get("segments", []), device=args.device)
+                    # aligned may be a list of segments with word timings; adapt to generator
+                    asr_out = {"segments": aligned}
+                except Exception as e:
+                    raise SystemExit(f"Alignment failed: {e}")
+            else:
+                raise SystemExit(f"Unknown alignment method: {method}")
+
+        # Optionally export words & visualization
+        if args.export_words:
+            try:
+                from .visualizer import extract_words_from_aligned_segments, write_words_json, write_simple_html_timeline
+
+                words = extract_words_from_aligned_segments(asr_out.get("segments", []))
+                out_json = Path(args.export_words)
+                write_words_json(words, out_json)
+                if args.visualize:
+                    html_out = out_json.with_suffix(".html")
+                    write_simple_html_timeline(out_json, html_out)
+            except Exception as e:
+                raise SystemExit(f"Exporting words/visualization failed: {e}")
+
+        # Generate initial subtitles from ASR output
+        subtitles = generate_srt_from_asr(asr_out)
+
+        # If a translation target is requested, fall through to translation step
+    else:
+        # No regeneration: read existing SRT file
+        print(f"Reading:  {input_path}")
+        subtitles = read_srt_file(input_path)
+
+    # Now translate `subtitles` using selected engine
     if engine == "google":
         from .translators.translator_google import translate_subtitles_google
 
@@ -177,53 +227,6 @@ def main() -> None:
         )
     else:
         raise SystemExit(f"Unknown engine: {engine}")
-
-    # Regenerate from audio using local ASR if requested
-    if args.regenerate:
-        try:
-            from .audio_io import audio_cache_path, extract_audio
-            from .asr import transcribe_with_vad
-            from .subtitle_sync import generate_srt_from_asr
-        except Exception as e:
-            raise SystemExit(f"Regenerate requested but required modules missing: {e}")
-
-        src_path = input_path
-        wav = audio_cache_path(src_path)
-        wav = extract_audio(src_path, wav)
-        asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
-
-        # Optional forced alignment
-        if args.align:
-            method = args.align_method or "whisperx"
-            if method == "whisperx":
-                try:
-                    from .aligner import align_with_whisperx
-
-                    aligned = align_with_whisperx(wav, asr_out.get("segments", []), device=args.device)
-                    # aligned may be a list of segments with word timings; adapt to generator
-                    # For backward compatibility we turn aligned into the same dict shape
-                    asr_out = {"segments": aligned}
-                except Exception as e:
-                    raise SystemExit(f"Alignment failed: {e}")
-            else:
-                raise SystemExit(f"Unknown alignment method: {method}")
-
-        translated = generate_srt_from_asr(asr_out)
-
-        # Optional exports: word-level JSON and visualization
-        if args.export_words:
-            try:
-                from .visualizer import extract_words_from_aligned_segments, write_words_json, write_simple_html_timeline
-
-                words = extract_words_from_aligned_segments(asr_out.get("segments", []))
-                out_json = Path(args.export_words)
-                write_words_json(words, out_json)
-                if args.visualize:
-                    html_out = out_json.with_suffix(".html")
-                    # write HTML next to JSON and copy JSON filename reference
-                    write_simple_html_timeline(out_json, html_out)
-            except Exception as e:
-                raise SystemExit(f"Exporting words/visualization failed: {e}")
 
     print(f"Writing:  {output_path}")
     write_srt_file(translated, output_path)

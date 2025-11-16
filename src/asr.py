@@ -36,14 +36,49 @@ def transcribe_with_whisper(
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
 
     segments = []
-    # faster-whisper model.transcribe yields segments with start/end/text
-    for segment in model.transcribe(str(wav_path)):
+    # faster-whisper model.transcribe may return different shapes depending on version:
+    # - an iterable of segment-like objects/dicts
+    # - a dict with a 'segments' key
+    # - nested generators; handle these robustly
+    result = model.transcribe(str(wav_path))
+
+    # If result is a mapping with 'segments'
+    if isinstance(result, dict) and "segments" in result:
+        raw_segments = result["segments"]
+    else:
+        # Attempt to iterate and flatten nested generators
+        raw_segments = []
+        try:
+            for item in result:
+                # item may itself be a segment dict/object, or a generator yielding segments
+                if isinstance(item, dict) and ("start" in item or "text" in item):
+                    raw_segments.append(item)
+                else:
+                    # try to iterate sub-items
+                    try:
+                        for sub in item:
+                            if isinstance(sub, dict) and ("start" in sub or "text" in sub):
+                                raw_segments.append(sub)
+                    except TypeError:
+                        # not iterable, ignore
+                        pass
+        except TypeError:
+            # not iterable; fall back to empty
+            raw_segments = []
+
+    for segment in raw_segments:
         # segment is expected to be an object/dict with .start .end .text
-        seg = {
-            "start": float(segment["start"]) if isinstance(segment, dict) and "start" in segment else float(segment.start),
-            "end": float(segment["end"]) if isinstance(segment, dict) and "end" in segment else float(segment.end),
-            "text": segment["text"] if isinstance(segment, dict) and "text" in segment else str(segment.text),
-        }
+        if isinstance(segment, dict):
+            start = float(segment.get("start", segment.get("begin", 0.0)))
+            end = float(segment.get("end", segment.get("finish", start)))
+            text = segment.get("text", "")
+        else:
+            # object-like
+            start = float(getattr(segment, "start", 0.0))
+            end = float(getattr(segment, "end", getattr(segment, "finish", start)))
+            text = str(getattr(segment, "text", ""))
+
+        seg = {"start": start, "end": end, "text": text}
         segments.append(seg)
 
     return {"segments": segments}
