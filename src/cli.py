@@ -157,15 +157,15 @@ def main() -> None:
     if args.regenerate:
         try:
             from .audio_io import audio_cache_path, extract_audio
-            from .asr import transcribe_with_whisper
-            from .subtitle_sync import generate_srt_from_asr
+                from .asr import transcribe_with_vad
+                from .subtitle_sync import generate_srt_from_asr
         except Exception as e:
             raise SystemExit(f"Regenerate requested but required modules missing: {e}")
 
         src_path = input_path
         wav = audio_cache_path(src_path)
         wav = extract_audio(src_path, wav)
-        asr_out = transcribe_with_whisper(wav, model_name=args.asr_model, device=args.device)
+        asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
         translated = generate_srt_from_asr(asr_out)
     
 

@@ -47,3 +47,65 @@ def transcribe_with_whisper(
         segments.append(seg)
 
     return {"segments": segments}
+
+
+def transcribe_with_vad(
+    wav_path: Path,
+    model_name: str = "small",
+    device: str = "auto",
+    compute_type: str = "float32",
+    aggressiveness: int = 2,
+    max_workers: int = 1,
+) -> Dict[str, List[dict]]:
+    """Run VAD to split audio and transcribe per-segment.
+
+    This function uses `src.vad.get_speech_segments` to find speech regions,
+    writes temporary WAV chunks, runs `transcribe_with_whisper` on each chunk,
+    and adjusts the timestamps to the original audio timeline.
+    """
+    from tempfile import NamedTemporaryFile
+    import wave
+    from src.vad import get_speech_segments
+
+    segments_out: List[dict] = []
+
+    segs = get_speech_segments(wav_path, aggressiveness=aggressiveness)
+
+    if not segs:
+        # fallback: transcribe whole file
+        return transcribe_with_whisper(wav_path, model_name=model_name, device=device, compute_type=compute_type)
+
+    # open source wave for slicing
+    with wave.open(str(wav_path), "rb") as src_wf:
+        n_channels = src_wf.getnchannels()
+        sampwidth = src_wf.getsampwidth()
+        framerate = src_wf.getframerate()
+
+        for s in segs:
+            start_frame = int(round(s.start * framerate))
+            end_frame = int(round(s.end * framerate))
+            src_wf.setpos(start_frame)
+            frames = src_wf.readframes(max(0, end_frame - start_frame))
+
+            # write to temp wav
+            with NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_name = tmp.name
+            with wave.open(tmp_name, "wb") as out_wf:
+                out_wf.setnchannels(n_channels)
+                out_wf.setsampwidth(sampwidth)
+                out_wf.setframerate(framerate)
+                out_wf.writeframes(frames)
+
+            # transcribe the chunk
+            chunk_result = transcribe_with_whisper(Path(tmp_name), model_name=model_name, device=device, compute_type=compute_type)
+            # adjust timestamps
+            for seg in chunk_result.get("segments", []):
+                segments_out.append({
+                    "start": float(seg["start"]) + s.start,
+                    "end": float(seg["end"]) + s.start,
+                    "text": seg.get("text", ""),
+                })
+
+    # sort segments by start
+    segments_out.sort(key=lambda x: x["start"])
+    return {"segments": segments_out}
