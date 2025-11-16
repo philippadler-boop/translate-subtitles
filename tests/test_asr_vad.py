@@ -35,7 +35,7 @@ def test_transcribe_with_vad_calls_chunk_transcriber(tmp_path):
     # Patch the low-level transcribe_with_whisper to return a fake segment for any chunk
     fake_chunk_result = {"segments": [{"start": 0.0, "end": 0.5, "text": "hello"}]}
 
-    with patch("src.asr.transcribe_with_whisper") as mock_trans:
+    with patch("src.asr.asr.transcribe_with_whisper") as mock_trans:
         mock_trans.return_value = fake_chunk_result
 
         out = transcribe_with_vad(wav, model_name="tiny", device="cpu")

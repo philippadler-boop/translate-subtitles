@@ -98,11 +98,12 @@ def transcribe_with_vad(
 ) -> Dict[str, List[dict]]:
     """Run VAD to split audio and transcribe per-segment.
 
-    This function uses `src.vad.get_speech_segments` to find speech regions,
-    writes temporary WAV chunks, runs `transcribe_with_whisper` on each chunk,
-    and adjusts the timestamps to the original audio timeline.
+    This function uses :func:`get_speech_segments` to find speech regions,
+    writes temporary WAV chunks, runs :func:`transcribe_with_whisper` on each
+    chunk, and adjusts the timestamps to the original audio timeline.
     """
     from tempfile import NamedTemporaryFile
+    import os
     import wave
     from .vad import get_speech_segments
 
@@ -111,11 +112,8 @@ def transcribe_with_vad(
     segs = get_speech_segments(wav_path, aggressiveness=aggressiveness)
 
     if not segs:
-        # fallback: transcribe whole file
-        import importlib
-
-        root_asr = importlib.import_module("src.asr")
-        return root_asr.transcribe_with_whisper(
+        # fallback: transcribe whole file directly
+        return transcribe_with_whisper(
             wav_path, model_name=model_name, device=device, compute_type=compute_type
         )
 
@@ -134,31 +132,34 @@ def transcribe_with_vad(
             # write to temp wav
             with NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_name = tmp.name
-            with wave.open(tmp_name, "wb") as out_wf:
-                out_wf.setnchannels(n_channels)
-                out_wf.setsampwidth(sampwidth)
-                out_wf.setframerate(framerate)
-                out_wf.writeframes(frames)
+            try:
+                with wave.open(tmp_name, "wb") as out_wf:
+                    out_wf.setnchannels(n_channels)
+                    out_wf.setsampwidth(sampwidth)
+                    out_wf.setframerate(framerate)
+                    out_wf.writeframes(frames)
 
-            # transcribe the chunk (call through the root shim so tests can patch it)
-            import importlib
-
-            root_asr = importlib.import_module("src.asr")
-            chunk_result = root_asr.transcribe_with_whisper(
-                Path(tmp_name),
-                model_name=model_name,
-                device=device,
-                compute_type=compute_type,
-            )
-            # adjust timestamps
-            for seg in chunk_result.get("segments", []):
-                segments_out.append(
-                    {
-                        "start": float(seg["start"]) + s.start,
-                        "end": float(seg["end"]) + s.start,
-                        "text": seg.get("text", ""),
-                    }
+                # transcribe the chunk
+                chunk_result = transcribe_with_whisper(
+                    Path(tmp_name),
+                    model_name=model_name,
+                    device=device,
+                    compute_type=compute_type,
                 )
+                # adjust timestamps
+                for seg in chunk_result.get("segments", []):
+                    segments_out.append(
+                        {
+                            "start": float(seg["start"]) + s.start,
+                            "end": float(seg["end"]) + s.start,
+                            "text": seg.get("text", ""),
+                        }
+                    )
+            finally:
+                try:
+                    os.remove(tmp_name)
+                except OSError:
+                    pass
 
     # sort segments by start
     segments_out.sort(key=lambda x: x["start"])
