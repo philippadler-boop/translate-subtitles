@@ -60,3 +60,16 @@ pip-wheel-metadata/
 
 # === Generated test files ===
 tests/output/
+
+# === Audio extraction artifacts ===
+out.wav
+*.wav
+
+# === Test utilities ===
+run_tests.py
+
+# === Coverage and pytest ===
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
