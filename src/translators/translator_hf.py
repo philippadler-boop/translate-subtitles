@@ -44,6 +44,30 @@ def translate_subtitles_hf(
     if not model_name:
         model_name = _default_hf_model_for_pair(source_lang, target_lang)
 
+    # If HF_MODEL is provided in config but appears to target the opposite
+    # language pair (common mistake: `opus-mt-en-de` vs `opus-mt-de-en`),
+    # auto-correct and warn the user.
+    if model_name:
+        mn_lower = model_name.lower()
+        src = source_lang.lower()
+        tgt = target_lang.lower()
+
+        if "en-de" in mn_lower and src.startswith("de") and tgt.startswith("en"):
+            corrected = model_name.replace("en-de", "de-en")
+            print(
+                f"[HF] Warning: HF_MODEL '{model_name}' looks like an en->de model; "
+                f"switching to '{corrected}' for de->en translation."
+            )
+            model_name = corrected
+
+        elif "de-en" in mn_lower and src.startswith("en") and tgt.startswith("de"):
+            corrected = model_name.replace("de-en", "en-de")
+            print(
+                f"[HF] Warning: HF_MODEL '{model_name}' looks like a de->en model; "
+                f"switching to '{corrected}' for en->de translation."
+            )
+            model_name = corrected
+
     print(f"[HF] Using model: {model_name}")
     translator = pipeline("translation", model=model_name)
 

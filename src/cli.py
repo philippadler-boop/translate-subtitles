@@ -5,8 +5,28 @@ from .srt_io import read_srt_file, write_srt_file
 
 
 def build_parser() -> argparse.ArgumentParser:
+    examples = """
+examples:
+  Translate English subtitles to German using Google Translate:
+    python main.py movie.srt --tgt-lang de
+
+  Translate with auto-detected source language and specify output:
+    python main.py movie.srt -o movie.de.srt --tgt-lang de
+
+  Translate French subtitles to Spanish using DeepL:
+    python main.py movie.fr.srt --src-lang fr --tgt-lang es --engine deepl
+
+  Translate using OpenAI GPT-4o with auto language detection:
+    python main.py movie.srt --tgt-lang es --engine gpt
+
+  Translate using HuggingFace offline model:
+    python main.py movie.srt --src-lang en --tgt-lang de --engine hf
+    """
+
     parser = argparse.ArgumentParser(
-        description="Translate .srt subtitle files between languages."
+        description="Translate .srt subtitle files between languages.",
+        epilog=examples,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument(

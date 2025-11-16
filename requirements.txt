@@ -7,3 +7,5 @@ deepl                # Official DeepL API SDK
 openai               # GPT-4o
 transformers         # HuggingFace models
 torch                # backend for transformers (CPU is fine)
+sentencepiece        # Required for some HuggingFace tokenizers (e.g., opus-mt)
+sacremoses
