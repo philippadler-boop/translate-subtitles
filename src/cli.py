@@ -159,7 +159,9 @@ def main() -> None:
         # ASR progress (unknown total)
         p_asr = Progress("ASR")
         p_asr.start()
-        asr_out = transcribe_with_vad(wav, model_name=args.asr_model, device=args.device)
+        asr_out = transcribe_with_vad(
+            wav, model_name=args.asr_model, device=args.device
+        )
         p_asr.finish("asr complete")
 
         # Optional forced alignment
@@ -171,7 +173,9 @@ def main() -> None:
 
                     p_align = Progress("Alignment")
                     p_align.start()
-                    aligned = align_with_whisperx(wav, asr_out.get("segments", []), device=args.device)
+                    aligned = align_with_whisperx(
+                        wav, asr_out.get("segments", []), device=args.device
+                    )
                     # aligned may be a list of segments with word timings; adapt to generator
                     asr_out = {"segments": aligned}
                     p_align.finish("aligned")
@@ -188,6 +192,7 @@ def main() -> None:
                     write_words_json,
                     write_simple_html_timeline,
                 )
+
                 p_words = Progress("Export Words")
                 p_words.start()
                 words = extract_words_from_aligned_segments(asr_out.get("segments", []))

@@ -3,7 +3,6 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from src.config.config_loader import get_from_env_or_json
 
@@ -32,7 +31,7 @@ class TestConfigLoader(unittest.TestCase):
         """Test getting value from JSON config file."""
         config_data = {self.test_key: self.test_value}
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(config_data, f)
             temp_path = Path(f.name)
 
@@ -51,7 +50,7 @@ class TestConfigLoader(unittest.TestCase):
 
         config_data = {self.test_key: json_value}
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(config_data, f)
             temp_path = Path(f.name)
 
@@ -73,7 +72,7 @@ class TestConfigLoader(unittest.TestCase):
 
     def test_invalid_json_file(self):
         """Test handling of invalid JSON file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("invalid json content {")
             temp_path = Path(f.name)
 
@@ -89,7 +88,7 @@ class TestConfigLoader(unittest.TestCase):
 
         # Create config.json in current directory
         config_path = Path("config.json")
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             json.dump(config_data, f)
 
         try:
@@ -99,5 +98,5 @@ class TestConfigLoader(unittest.TestCase):
             config_path.unlink()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

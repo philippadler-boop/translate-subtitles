@@ -17,13 +17,13 @@ class TestSrtIO(unittest.TestCase):
                 index=1,
                 start=srt.srt_timestamp_to_timedelta("00:00:00,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:05,000"),
-                content="Hello world!"
+                content="Hello world!",
             ),
             srt.Subtitle(
                 index=2,
                 start=srt.srt_timestamp_to_timedelta("00:00:05,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:10,000"),
-                content="This is a test subtitle.\nWith multiple lines."
+                content="This is a test subtitle.\nWith multiple lines.",
             ),
         ]
 
@@ -39,7 +39,7 @@ This is a test subtitle.
 With multiple lines.
 """
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
             f.write(srt_content)
             temp_path = Path(f.name)
 
@@ -47,7 +47,9 @@ With multiple lines.
             subtitles = read_srt_file(temp_path)
             self.assertEqual(len(subtitles), 2)
             self.assertEqual(subtitles[0].content, "Hello world!")
-            self.assertEqual(subtitles[1].content, "This is a test subtitle.\nWith multiple lines.")
+            self.assertEqual(
+                subtitles[1].content, "This is a test subtitle.\nWith multiple lines."
+            )
         finally:
             temp_path.unlink()
 
@@ -58,14 +60,14 @@ With multiple lines.
 
     def test_write_srt_file(self):
         """Test writing subtitles to SRT file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
             temp_path = Path(f.name)
 
         try:
             write_srt_file(self.sample_subtitles, temp_path)
 
             # Read back and verify
-            with open(temp_path, 'r', encoding='utf-8') as f:
+            with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             # Check that the file contains expected content
@@ -78,7 +80,7 @@ With multiple lines.
 
     def test_roundtrip_read_write(self):
         """Test that reading and writing preserves subtitle data."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
             temp_path = Path(f.name)
 
         try:
@@ -100,5 +102,5 @@ With multiple lines.
             temp_path.unlink()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

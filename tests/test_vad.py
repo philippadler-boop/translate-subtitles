@@ -27,7 +27,9 @@ def _write_tone_wav(path: Path, durations: list, freq: int = 440, sr: int = 1600
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sr)
-        wf.writeframes(b"".join(int(s).to_bytes(2, "little", signed=True) for s in samples))
+        wf.writeframes(
+            b"".join(int(s).to_bytes(2, "little", signed=True) for s in samples)
+        )
 
 
 def test_get_speech_segments_detects_tone(tmp_path):

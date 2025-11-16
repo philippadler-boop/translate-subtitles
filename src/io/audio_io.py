@@ -6,7 +6,9 @@ from typing import Optional
 
 def _ensure_ffmpeg_available() -> None:
     if shutil.which("ffmpeg") is None:
-        raise RuntimeError("ffmpeg executable not found on PATH. Please install ffmpeg.")
+        raise RuntimeError(
+            "ffmpeg executable not found on PATH. Please install ffmpeg."
+        )
 
 
 def extract_audio(
@@ -42,7 +44,9 @@ def extract_audio(
     args += ["-vn", "-f", "wav", str(out_wav)]
 
     try:
-        subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"ffmpeg failed to extract audio: {e}")
 

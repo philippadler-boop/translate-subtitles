@@ -5,7 +5,7 @@ import srt
 
 from src.translators.translator_hf import (
     translate_subtitles_hf,
-    _default_hf_model_for_pair
+    _default_hf_model_for_pair,
 )
 
 
@@ -19,13 +19,13 @@ class TestTranslatorHF(unittest.TestCase):
                 index=1,
                 start=srt.srt_timestamp_to_timedelta("00:00:00,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:05,000"),
-                content="Hello world!"
+                content="Hello world!",
             ),
             srt.Subtitle(
                 index=2,
                 start=srt.srt_timestamp_to_timedelta("00:00:05,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:10,000"),
-                content="This is a test."
+                content="This is a test.",
             ),
         ]
 
@@ -51,8 +51,8 @@ class TestTranslatorHF(unittest.TestCase):
         self.assertIn("No default model configured", str(cm.exception))
         self.assertIn("unknown-lang", str(cm.exception))
 
-    @patch('src.translators.translator_hf.get_from_env_or_json')
-    @patch('src.translators.translator_hf.pipeline')
+    @patch("src.translators.translator_hf.get_from_env_or_json")
+    @patch("src.translators.translator_hf.pipeline")
     def test_translate_subtitles_hf_success(self, mock_pipeline, mock_get_config):
         """Test successful translation with mocked pipeline."""
         # Mock configuration - no HF_MODEL set, use default
@@ -71,11 +71,15 @@ class TestTranslatorHF(unittest.TestCase):
         self.assertEqual(result[1].content, "Hallo Welt!")  # Same mock result
 
         # Verify pipeline was called with correct model
-        mock_pipeline.assert_called_once_with("translation", model="Helsinki-NLP/opus-mt-en-de")
+        mock_pipeline.assert_called_once_with(
+            "translation", model="Helsinki-NLP/opus-mt-en-de"
+        )
 
-    @patch('src.translators.translator_hf.get_from_env_or_json')
-    @patch('src.translators.translator_hf.pipeline')
-    def test_translate_subtitles_hf_with_custom_model(self, mock_pipeline, mock_get_config):
+    @patch("src.translators.translator_hf.get_from_env_or_json")
+    @patch("src.translators.translator_hf.pipeline")
+    def test_translate_subtitles_hf_with_custom_model(
+        self, mock_pipeline, mock_get_config
+    ):
         """Test translation with custom HF_MODEL from config."""
         custom_model = "custom/model-name"
         mock_get_config.return_value = custom_model
@@ -89,9 +93,11 @@ class TestTranslatorHF(unittest.TestCase):
         # Verify custom model was used
         mock_pipeline.assert_called_once_with("translation", model=custom_model)
 
-    @patch('src.translators.translator_hf.get_from_env_or_json')
-    @patch('src.translators.translator_hf.pipeline')
-    def test_translate_subtitles_hf_auto_correct_en_de_to_de_en(self, mock_pipeline, mock_get_config):
+    @patch("src.translators.translator_hf.get_from_env_or_json")
+    @patch("src.translators.translator_hf.pipeline")
+    def test_translate_subtitles_hf_auto_correct_en_de_to_de_en(
+        self, mock_pipeline, mock_get_config
+    ):
         """Test auto-correction when HF_MODEL is en-de but translating de->en."""
         # Config has en->de model but we're translating de->en
         mock_get_config.return_value = "Helsinki-NLP/opus-mt-en-de"
@@ -100,11 +106,13 @@ class TestTranslatorHF(unittest.TestCase):
         mock_translator.return_value = [{"translation_text": "Translated"}]
         mock_pipeline.return_value = mock_translator
 
-        with patch('builtins.print') as mock_print:
+        with patch("builtins.print") as mock_print:
             result = translate_subtitles_hf(self.sample_subtitles, "de", "en")
 
             # Should auto-correct to de-en model
-            mock_pipeline.assert_called_once_with("translation", model="Helsinki-NLP/opus-mt-de-en")
+            mock_pipeline.assert_called_once_with(
+                "translation", model="Helsinki-NLP/opus-mt-de-en"
+            )
 
             # Should print warning and model usage
             self.assertEqual(mock_print.call_count, 2)
@@ -115,9 +123,11 @@ class TestTranslatorHF(unittest.TestCase):
             self.assertIn("de->en translation", warning_call[0][0])
             self.assertIn("Using model", model_call[0][0])
 
-    @patch('src.translators.translator_hf.get_from_env_or_json')
-    @patch('src.translators.translator_hf.pipeline')
-    def test_translate_subtitles_hf_auto_correct_de_en_to_en_de(self, mock_pipeline, mock_get_config):
+    @patch("src.translators.translator_hf.get_from_env_or_json")
+    @patch("src.translators.translator_hf.pipeline")
+    def test_translate_subtitles_hf_auto_correct_de_en_to_en_de(
+        self, mock_pipeline, mock_get_config
+    ):
         """Test auto-correction when HF_MODEL is de-en but translating en->de."""
         mock_get_config.return_value = "Helsinki-NLP/opus-mt-de-en"
 
@@ -125,10 +135,12 @@ class TestTranslatorHF(unittest.TestCase):
         mock_translator.return_value = [{"translation_text": "Translated"}]
         mock_pipeline.return_value = mock_translator
 
-        with patch('builtins.print') as mock_print:
+        with patch("builtins.print") as mock_print:
             result = translate_subtitles_hf(self.sample_subtitles, "en", "de")
 
-            mock_pipeline.assert_called_once_with("translation", model="Helsinki-NLP/opus-mt-en-de")
+            mock_pipeline.assert_called_once_with(
+                "translation", model="Helsinki-NLP/opus-mt-en-de"
+            )
 
             # Should print warning and model usage
             self.assertEqual(mock_print.call_count, 2)
@@ -139,9 +151,11 @@ class TestTranslatorHF(unittest.TestCase):
             self.assertIn("en->de translation", warning_call[0][0])
             self.assertIn("Using model", model_call[0][0])
 
-    @patch('src.translators.translator_hf.get_from_env_or_json')
-    @patch('src.translators.translator_hf.pipeline')
-    def test_translate_subtitles_hf_translation_error(self, mock_pipeline, mock_get_config):
+    @patch("src.translators.translator_hf.get_from_env_or_json")
+    @patch("src.translators.translator_hf.pipeline")
+    def test_translate_subtitles_hf_translation_error(
+        self, mock_pipeline, mock_get_config
+    ):
         """Test handling of translation errors."""
         mock_get_config.return_value = None
 
@@ -149,7 +163,7 @@ class TestTranslatorHF(unittest.TestCase):
         # First call succeeds, second fails
         mock_translator.side_effect = [
             [{"translation_text": "Success"}],
-            Exception("Translation failed")
+            Exception("Translation failed"),
         ]
         mock_pipeline.return_value = mock_translator
 
@@ -162,8 +176,10 @@ class TestTranslatorHF(unittest.TestCase):
 
     def test_translate_subtitles_hf_preserves_metadata(self):
         """Test that subtitle metadata is preserved during translation."""
-        with patch('src.translators.translator_hf.get_from_env_or_json') as mock_get_config:
-            with patch('src.translators.translator_hf.pipeline') as mock_pipeline:
+        with patch(
+            "src.translators.translator_hf.get_from_env_or_json"
+        ) as mock_get_config:
+            with patch("src.translators.translator_hf.pipeline") as mock_pipeline:
                 mock_get_config.return_value = None
 
                 mock_translator = MagicMock()
@@ -180,5 +196,5 @@ class TestTranslatorHF(unittest.TestCase):
                     self.assertEqual(original.proprietary, translated.proprietary)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

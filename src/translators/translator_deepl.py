@@ -5,12 +5,12 @@ import srt
 import deepl
 from tqdm import tqdm
 
-from ..config_loader import get_from_env_or_json
+from ..config.config_loader import get_from_env_or_json
 from .translator_google import translate_subtitles_google
 from ..utils import Progress
 
 
-MAX_RETRIES = 5   # retry attempts for DeepL rate-limit/high-load errors
+MAX_RETRIES = 5  # retry attempts for DeepL rate-limit/high-load errors
 
 
 def translate_subtitles_deepl(
@@ -70,7 +70,7 @@ def translate_subtitles_deepl(
                     )
                     result = result_obj.text
                     break  # success
-                except deepl.TooManyRequestsException as e:
+                except deepl.TooManyRequestsException:
                     # DeepL is rate-limiting us, so we wait and retry
                     wait_seconds = 2 ** (attempt - 1)
                     print(
@@ -128,7 +128,7 @@ def translate_subtitles_deepl(
                 )
                 result = result_obj.text
                 break  # success
-            except deepl.TooManyRequestsException as e:
+            except deepl.TooManyRequestsException:
                 # DeepL is rate-limiting us, so we wait and retry
                 wait_seconds = 2 ** (attempt - 1)
                 print(

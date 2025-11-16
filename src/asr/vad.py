@@ -7,6 +7,7 @@ from typing import List, Tuple
 
 try:
     import webrtcvad  # type: ignore
+
     _HAVE_WEBRTC = True
 except Exception:
     webrtcvad = None  # type: ignore
@@ -33,12 +34,14 @@ def _read_wave(path: Path) -> Tuple[bytes, int]:
 
 
 def frame_generator(frame_duration_ms: int, audio: bytes, sample_rate: int):
-    n = int(sample_rate * (frame_duration_ms / 1000.0) * 2)  # 2 bytes per sample (16-bit)
+    n = int(
+        sample_rate * (frame_duration_ms / 1000.0) * 2
+    )  # 2 bytes per sample (16-bit)
     offset = 0
     timestamp = 0.0
-    duration = (float(n) / (sample_rate * 2))
+    duration = float(n) / (sample_rate * 2)
     while offset + n <= len(audio):
-        yield audio[offset:offset + n], timestamp, duration
+        yield audio[offset : offset + n], timestamp, duration
         timestamp += duration
         offset += n
 
@@ -82,10 +85,15 @@ def vad_collector(
                 ring_buffer.clear()
 
     if triggered:
-        yield Segment(start=voiced_start, end=last_timestamp + (duration if 'duration' in locals() else 0))
+        yield Segment(
+            start=voiced_start,
+            end=last_timestamp + (duration if "duration" in locals() else 0),
+        )
 
 
-def _simple_energy_vad(frame_bytes: bytes, sample_rate: int, threshold: float = 500.0) -> bool:
+def _simple_energy_vad(
+    frame_bytes: bytes, sample_rate: int, threshold: float = 500.0
+) -> bool:
     """Very small RMS-based detector for a single frame (16-bit PCM).
 
     This is a fallback if `webrtcvad` cannot be built on the platform.

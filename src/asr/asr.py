@@ -30,7 +30,9 @@ def transcribe_with_whisper(
     Returns a dict: {"segments": [ {"start": float, "end": float, "text": str}, ... ] }
     """
     if WhisperModel is None:
-        raise RuntimeError("faster-whisper is not installed. Please install it to use local ASR.")
+        raise RuntimeError(
+            "faster-whisper is not installed. Please install it to use local ASR."
+        )
 
     device = _choose_device(device)
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
@@ -57,7 +59,9 @@ def transcribe_with_whisper(
                     # try to iterate sub-items
                     try:
                         for sub in item:
-                            if isinstance(sub, dict) and ("start" in sub or "text" in sub):
+                            if isinstance(sub, dict) and (
+                                "start" in sub or "text" in sub
+                            ):
                                 raw_segments.append(sub)
                     except TypeError:
                         # not iterable, ignore
@@ -111,7 +115,9 @@ def transcribe_with_vad(
         import importlib
 
         root_asr = importlib.import_module("src.asr")
-        return root_asr.transcribe_with_whisper(wav_path, model_name=model_name, device=device, compute_type=compute_type)
+        return root_asr.transcribe_with_whisper(
+            wav_path, model_name=model_name, device=device, compute_type=compute_type
+        )
 
     # open source wave for slicing
     with wave.open(str(wav_path), "rb") as src_wf:
@@ -138,14 +144,21 @@ def transcribe_with_vad(
             import importlib
 
             root_asr = importlib.import_module("src.asr")
-            chunk_result = root_asr.transcribe_with_whisper(Path(tmp_name), model_name=model_name, device=device, compute_type=compute_type)
+            chunk_result = root_asr.transcribe_with_whisper(
+                Path(tmp_name),
+                model_name=model_name,
+                device=device,
+                compute_type=compute_type,
+            )
             # adjust timestamps
             for seg in chunk_result.get("segments", []):
-                segments_out.append({
-                    "start": float(seg["start"]) + s.start,
-                    "end": float(seg["end"]) + s.start,
-                    "text": seg.get("text", ""),
-                })
+                segments_out.append(
+                    {
+                        "start": float(seg["start"]) + s.start,
+                        "end": float(seg["end"]) + s.start,
+                        "text": seg.get("text", ""),
+                    }
+                )
 
     # sort segments by start
     segments_out.sort(key=lambda x: x["start"])

@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import srt
 
@@ -27,13 +27,13 @@ This is a test.
                 index=1,
                 start=srt.srt_timestamp_to_timedelta("00:00:00,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:05,000"),
-                content="Hello world!"
+                content="Hello world!",
             ),
             srt.Subtitle(
                 index=2,
                 start=srt.srt_timestamp_to_timedelta("00:00:05,000"),
                 end=srt.srt_timestamp_to_timedelta("00:00:10,000"),
-                content="This is a test."
+                content="This is a test.",
             ),
         ]
 
@@ -42,45 +42,52 @@ This is a test.
         if content is None:
             content = self.sample_srt_content
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.srt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".srt", delete=False) as f:
             f.write(content)
             return Path(f.name)
 
     def test_main_google_translation(self):
         """Test main function with Google translator."""
         input_path = self.create_temp_srt_file()
-        output_path = input_path.with_suffix('.de.srt')
+        output_path = input_path.with_suffix(".de.srt")
 
         try:
-            with patch('src.translators.translator_google.translate_subtitles_google') as mock_translate:
+            with patch(
+                "src.translators.translator_google.translate_subtitles_google"
+            ) as mock_translate:
                 mock_translate.return_value = [
                     srt.Subtitle(
                         index=1,
                         start=srt.srt_timestamp_to_timedelta("00:00:00,000"),
                         end=srt.srt_timestamp_to_timedelta("00:00:05,000"),
-                        content="Hallo Welt!"
+                        content="Hallo Welt!",
                     ),
                     srt.Subtitle(
                         index=2,
                         start=srt.srt_timestamp_to_timedelta("00:00:05,000"),
                         end=srt.srt_timestamp_to_timedelta("00:00:10,000"),
-                        content="Das ist ein Test."
+                        content="Das ist ein Test.",
                     ),
                 ]
 
-                with patch('sys.argv', [
-                    'main.py',
-                    str(input_path),
-                    '--tgt-lang', 'de',
-                    '--engine', 'google'
-                ]):
+                with patch(
+                    "sys.argv",
+                    [
+                        "main.py",
+                        str(input_path),
+                        "--tgt-lang",
+                        "de",
+                        "--engine",
+                        "google",
+                    ],
+                ):
                     main()
 
                 # Verify translation was called
                 mock_translate.assert_called_once()
                 args, kwargs = mock_translate.call_args
-                self.assertEqual(kwargs['source_lang'], 'auto')  # default
-                self.assertEqual(kwargs['target_lang'], 'de')
+                self.assertEqual(kwargs["source_lang"], "auto")  # default
+                self.assertEqual(kwargs["target_lang"], "de")
 
                 # Verify output file was created
                 self.assertTrue(output_path.exists())
@@ -93,25 +100,35 @@ This is a test.
     def test_main_hf_translation(self):
         """Test main function with HuggingFace translator."""
         input_path = self.create_temp_srt_file()
-        output_path = input_path.with_suffix('.en.srt')
+        output_path = input_path.with_suffix(".en.srt")
 
         try:
-            with patch('src.translators.translator_hf.translate_subtitles_hf') as mock_translate:
-                mock_translate.return_value = self.sample_subtitles  # Mock returns same content
+            with patch(
+                "src.translators.translator_hf.translate_subtitles_hf"
+            ) as mock_translate:
+                mock_translate.return_value = (
+                    self.sample_subtitles
+                )  # Mock returns same content
 
-                with patch('sys.argv', [
-                    'main.py',
-                    str(input_path),
-                    '--src-lang', 'de',
-                    '--tgt-lang', 'en',
-                    '--engine', 'hf'
-                ]):
+                with patch(
+                    "sys.argv",
+                    [
+                        "main.py",
+                        str(input_path),
+                        "--src-lang",
+                        "de",
+                        "--tgt-lang",
+                        "en",
+                        "--engine",
+                        "hf",
+                    ],
+                ):
                     main()
 
                 mock_translate.assert_called_once()
                 args, kwargs = mock_translate.call_args
-                self.assertEqual(kwargs['source_lang'], 'de')
-                self.assertEqual(kwargs['target_lang'], 'en')
+                self.assertEqual(kwargs["source_lang"], "de")
+                self.assertEqual(kwargs["target_lang"], "en")
 
                 self.assertTrue(output_path.exists())
 
@@ -122,11 +139,7 @@ This is a test.
 
     def test_main_invalid_input_file(self):
         """Test main function with nonexistent input file."""
-        with patch('sys.argv', [
-            'main.py',
-            'nonexistent.srt',
-            '--tgt-lang', 'en'
-        ]):
+        with patch("sys.argv", ["main.py", "nonexistent.srt", "--tgt-lang", "en"]):
             with self.assertRaises(SystemExit) as cm:
                 main()
 
@@ -138,15 +151,22 @@ This is a test.
         custom_output = input_path.parent / "custom_output.srt"
 
         try:
-            with patch('src.translators.translator_google.translate_subtitles_google') as mock_translate:
+            with patch(
+                "src.translators.translator_google.translate_subtitles_google"
+            ) as mock_translate:
                 mock_translate.return_value = self.sample_subtitles
 
-                with patch('sys.argv', [
-                    'main.py',
-                    str(input_path),
-                    '--tgt-lang', 'en',
-                    '--output', str(custom_output)
-                ]):
+                with patch(
+                    "sys.argv",
+                    [
+                        "main.py",
+                        str(input_path),
+                        "--tgt-lang",
+                        "en",
+                        "--output",
+                        str(custom_output),
+                    ],
+                ):
                     main()
 
                 # Verify custom output path was used
@@ -160,17 +180,17 @@ This is a test.
     def test_main_default_output_path_generation(self):
         """Test default output path generation."""
         input_path = self.create_temp_srt_file()
-        expected_output = input_path.with_suffix('.de.srt')
+        expected_output = input_path.with_suffix(".de.srt")
 
         try:
-            with patch('src.translators.translator_google.translate_subtitles_google') as mock_translate:
+            with patch(
+                "src.translators.translator_google.translate_subtitles_google"
+            ) as mock_translate:
                 mock_translate.return_value = self.sample_subtitles
 
-                with patch('sys.argv', [
-                    'main.py',
-                    str(input_path),
-                    '--tgt-lang', 'de'
-                ]):
+                with patch(
+                    "sys.argv", ["main.py", str(input_path), "--tgt-lang", "de"]
+                ):
                     main()
 
                 # Verify output was created with expected name
@@ -186,12 +206,10 @@ This is a test.
         input_path = self.create_temp_srt_file()
 
         try:
-            with patch('sys.argv', [
-                'main.py',
-                str(input_path),
-                '--tgt-lang', 'en',
-                '--engine', 'unknown'
-            ]):
+            with patch(
+                "sys.argv",
+                ["main.py", str(input_path), "--tgt-lang", "en", "--engine", "unknown"],
+            ):
                 # The argument parser will exit with code 2 for invalid choice
                 with self.assertRaises(SystemExit):
                     main()
@@ -200,5 +218,5 @@ This is a test.
             input_path.unlink()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

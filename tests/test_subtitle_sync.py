@@ -19,5 +19,5 @@ class TestSubtitleSync(unittest.TestCase):
         self.assertTrue(all(x < y for x, y in zip(starts, starts[1:])))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

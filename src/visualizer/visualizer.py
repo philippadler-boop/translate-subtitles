@@ -3,7 +3,9 @@ import json
 from typing import List, Dict, Any
 
 
-def extract_words_from_aligned_segments(aligned_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def extract_words_from_aligned_segments(
+    aligned_segments: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
     """Flatten aligned segments into a list of word dicts with start/end/text."""
     words = []
     for seg in aligned_segments:
@@ -11,11 +13,13 @@ def extract_words_from_aligned_segments(aligned_segments: List[Dict[str, Any]]) 
         for w in seg.get("words", []) if isinstance(seg.get("words", []), list) else []:
             # expect word dict with 'start','end','word'
             word_text = w.get("word") or w.get("text") or w.get("token") or ""
-            words.append({
-                "text": word_text,
-                "start": float(w.get("start", 0.0)),
-                "end": float(w.get("end", 0.0)),
-            })
+            words.append(
+                {
+                    "text": word_text,
+                    "start": float(w.get("start", 0.0)),
+                    "end": float(w.get("end", 0.0)),
+                }
+            )
     return words
 
 

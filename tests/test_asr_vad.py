@@ -23,7 +23,9 @@ def _write_short_tone(path: Path, sr: int = 16000):
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sr)
-        wf.writeframes(b"".join(int(s).to_bytes(2, "little", signed=True) for s in samples))
+        wf.writeframes(
+            b"".join(int(s).to_bytes(2, "little", signed=True) for s in samples)
+        )
 
 
 def test_transcribe_with_vad_calls_chunk_transcriber(tmp_path):

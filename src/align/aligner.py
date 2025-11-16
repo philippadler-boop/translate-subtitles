@@ -13,7 +13,9 @@ def _choose_device(device: str) -> str:
     return device
 
 
-def align_with_whisperx(wav_path: Path, asr_segments: List[Dict[str, Any]], device: str = "auto") -> List[Dict[str, Any]]:
+def align_with_whisperx(
+    wav_path: Path, asr_segments: List[Dict[str, Any]], device: str = "auto"
+) -> List[Dict[str, Any]]:
     """Attempt to run WhisperX forced-alignment on the given audio.
 
     Parameters
@@ -44,10 +46,14 @@ def align_with_whisperx(wav_path: Path, asr_segments: List[Dict[str, Any]], devi
         result = model.transcribe(str(wav_path))
 
         # load align model (whisperx uses a small alignment model)
-        align_model, metadata = whisperx.load_align_model(result.get("language", result.get("lang", "en")), device=dev)
+        align_model, metadata = whisperx.load_align_model(
+            result.get("language", result.get("lang", "en")), device=dev
+        )
 
         # perform alignment
-        result_aligned = whisperx.align(result["segments"], align_model, metadata, str(wav_path), device=dev)
+        result_aligned = whisperx.align(
+            result["segments"], align_model, metadata, str(wav_path), device=dev
+        )
 
         # result_aligned may contain word-level timings in 'segments'->'words'
         aligned_segments = []
@@ -60,8 +66,12 @@ def align_with_whisperx(wav_path: Path, asr_segments: List[Dict[str, Any]], devi
         # Try alternate calling convention used by other versions
         try:
             result = whisperx.transcribe(str(wav_path), device=dev)
-            align_model, metadata = whisperx.load_align_model(result.get("language", "en"), device=dev)
-            result_aligned = whisperx.align(result, align_model, metadata, str(wav_path), device=dev)
+            align_model, metadata = whisperx.load_align_model(
+                result.get("language", "en"), device=dev
+            )
+            result_aligned = whisperx.align(
+                result, align_model, metadata, str(wav_path), device=dev
+            )
             return result_aligned.get("segments", [])
         except Exception as e:
             raise RuntimeError(

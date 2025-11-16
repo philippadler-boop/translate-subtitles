@@ -10,7 +10,10 @@ class TestAudioIO(unittest.TestCase):
     def test_audio_cache_path_default(self):
         p = Path("video.mp4")
         cache = audio_cache_path(p)
-        self.assertTrue(str(cache).endswith(".cache\\audio\\video.wav") or str(cache).endswith(".cache/audio/video.wav"))
+        self.assertTrue(
+            str(cache).endswith(".cache\\audio\\video.wav")
+            or str(cache).endswith(".cache/audio/video.wav")
+        )
 
     @patch("src.io.audio_io.shutil.which")
     @patch("src.io.audio_io.subprocess.run")
@@ -29,5 +32,5 @@ class TestAudioIO(unittest.TestCase):
             self.assertEqual(r, out)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
