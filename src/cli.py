@@ -5,7 +5,6 @@ from pathlib import Path
 from .io import read_srt_file, write_srt_file
 from .utils import Progress
 import sys
-from pathlib import Path
 
 
 ASCII_HEADER = r"""
@@ -20,6 +19,33 @@ ASCII_HEADER = r"""
                                                              
 WhisperFlow - subtitle translation pipeline
 """
+
+CLI_EXAMPLES = """
+examples:
+    Translate English subtitles to German using Google Translate:
+        python main.py movie.srt --tgt-lang de
+
+    Translate with auto-detected source language and specify output:
+        python main.py movie.srt -o movie.de.srt --tgt-lang de
+
+    Translate French subtitles to Spanish using DeepL:
+        python main.py movie.fr.srt --src-lang fr --tgt-lang es --engine deepl
+
+    Translate using OpenAI GPT-4o with auto language detection:
+        python main.py movie.srt --tgt-lang es --engine gpt
+
+    Regenerate subtitles from a video with Whisper large-v3 on GPU and translate to English:
+        python main.py movie.mkv --tgt-lang en --regenerate --device cuda --asr-model large
+
+    Translate using HuggingFace offline model:
+        python main.py movie.srt --src-lang en --tgt-lang de --engine hf
+"""
+
+# Centralized CLI configuration
+ASR_MODEL_CHOICES = ("tiny", "small", "medium", "large")
+ASR_DEFAULT_MODEL = "small"
+DEVICE_CHOICES = ("auto", "cpu", "cuda")
+ENGINE_CHOICES = ("google", "deepl", "gpt", "hf")
 
 # Best-effort CUDA DLL discovery for Windows: ensure the CUDA bin folders
 # are on PATH so `ctranslate2` can locate the required CUDA DLLs.
@@ -71,27 +97,9 @@ def _normalize_asr_model(name: str) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    examples = """
-examples:
-  Translate English subtitles to German using Google Translate:
-    python main.py movie.srt --tgt-lang de
-
-  Translate with auto-detected source language and specify output:
-    python main.py movie.srt -o movie.de.srt --tgt-lang de
-
-  Translate French subtitles to Spanish using DeepL:
-    python main.py movie.fr.srt --src-lang fr --tgt-lang es --engine deepl
-
-  Translate using OpenAI GPT-4o with auto language detection:
-    python main.py movie.srt --tgt-lang es --engine gpt
-
-  Translate using HuggingFace offline model:
-    python main.py movie.srt --src-lang en --tgt-lang de --engine hf
-    """
-
     parser = argparse.ArgumentParser(
         description="Translate .srt subtitle files between languages.",
-        epilog=examples,
+                epilog=CLI_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -127,7 +135,7 @@ examples:
 
     parser.add_argument(
         "--engine",
-        choices=["google", "deepl", "gpt", "hf"],
+        choices=list(ENGINE_CHOICES),
         default="google",
         help=(
             "Translation engine to use. "
@@ -172,7 +180,7 @@ examples:
 
     parser.add_argument(
         "--asr-model",
-        default="small",
+        default=ASR_DEFAULT_MODEL,
         help=(
             "ASR model to use for regeneration (e.g. small, medium, large). "
             "Short names (tiny/small/medium/large) will be expanded to full HF IDs "
@@ -184,25 +192,22 @@ examples:
     parser.add_argument(
         "--device",
         default="auto",
-        help="Device for ASR: auto|cpu|cuda. Defaults to auto.",
-    )
-
-    # Hidden flag to suppress secondary interactive prompts in main()
-    parser.add_argument(
-        "--no-prompt",
-        action="store_true",
-        help=argparse.SUPPRESS,
+        choices=list(DEVICE_CHOICES),
+        help="Device for ASR. Defaults to auto.",
     )
 
     return parser
 
 
 def main() -> None:
-    # Interactive mode when no CLI args provided
-    if len(sys.argv) == 1:
-        return _interactive_launcher()
-
     parser = build_parser()
+
+    # When no CLI args are provided, show header + full help.
+    if len(sys.argv) == 1:
+        print(ASCII_HEADER)
+        parser.print_help()
+        return
+
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -215,31 +220,6 @@ def main() -> None:
 
     # If regenerate requested, run ASR pipeline first to create subtitles
     if args.regenerate:
-        # If running interactively, ask the user which device and ASR model to use.
-        # This allows choosing GPU/CPU and model size at runtime even when
-        # the CLI was invoked with non-interactive defaults.
-        try:
-            # Only prompt if running in a TTY and no-prompt is not set
-            interactive = sys.stdin.isatty() and not getattr(args, "no_prompt", False)
-        except Exception:
-            interactive = False
-
-        if interactive:
-            # Ask for device choice
-            dev_prompt = f"ASR device (auto/cpu/cuda) [{args.device}]: "
-            dev_in = input(dev_prompt).strip()
-            if dev_in:
-                if dev_in not in ("auto", "cpu", "cuda"):
-                    print("Unknown device choice, using default.")
-                else:
-                    args.device = dev_in
-
-            # Ask for ASR model
-            model_prompt = f"ASR model (tiny/small/medium/whisper-large-v3) [{args.asr_model}]: "
-            model_in = input(model_prompt).strip()
-            if model_in:
-                args.asr_model = model_in
-
         try:
             from .io import audio_cache_path, extract_audio
             from .asr.asr import transcribe_with_vad
@@ -393,123 +373,4 @@ def main() -> None:
     print("Done.")
 
 
-def _interactive_launcher() -> None:
-    """Simple interactive CLI for choosing input and running the pipeline."""
-    print(ASCII_HEADER)
 
-    root = Path(__file__).resolve().parents[1]
-    workspace_dir = root / "workspaces"
-    if not workspace_dir.is_dir():
-        print(f"No workspace directory found at {workspace_dir}")
-        return
-
-    input_types = {"video": [".mp4", ".mkv", ".mov"], "audio": [".wav", ".mp3", ".m4a", ".flac"], "srt": [".srt"]}
-
-    # Ask which input type
-    while True:
-        choice = input("Select input type (video/audio/srt): ").strip().lower()
-        if choice in input_types:
-            break
-        print("Please enter one of: video, audio, srt")
-
-    exts = input_types[choice]
-
-    # Prefer a subdirectory named after the choice (e.g. workspaces/video)
-    candidate_dir = workspace_dir / choice
-    if candidate_dir.is_dir():
-        search_dir = candidate_dir
-    else:
-        search_dir = workspace_dir
-
-    # Collect matching files (non-recursive if using a dedicated folder,
-    # otherwise search recursively so users can organize files arbitrarily)
-    if search_dir == candidate_dir:
-        files = [p for p in search_dir.iterdir() if p.suffix.lower() in exts]
-    else:
-        files = [p for p in search_dir.rglob("*") if p.suffix.lower() in exts]
-
-    if not files:
-        print(f"No {choice} files found in {search_dir}")
-        return
-
-    print(f"Found {len(files)} {choice} files:")
-    for i, p in enumerate(files, start=1):
-        print(f"  {i}) {p.name}")
-
-    while True:
-        sel = input(f"Pick a file [1-{len(files)}]: ").strip()
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(files):
-                selected = files[idx]
-                break
-        except Exception:
-            pass
-        print("Invalid selection")
-
-    print(f"Selected: {selected}")
-
-    # Only a single action is currently supported; no quit option here.
-    if choice == "srt":
-        action_label = "Translate subtitles"
-    else:
-        action_label = "Regenerate + Translate"
-
-    print("Available actions:")
-    print(f"  1) {action_label}")
-
-    while True:
-        act = input("Choose action [1]: ").strip().lower() or "1"
-        if act == "1":
-            break
-        print("Invalid action")
-
-    # Ask for source and target language
-    src = input("Source language code (e.g. de, en or 'auto') [auto]: ").strip() or "auto"
-    tgt = input("Target language code (e.g. en, de) [en]: ").strip() or "en"
-
-    # Build args and run parsed pipeline
-    parser = build_parser()
-    args_list = [str(selected), "--src-lang", src, "--tgt-lang", tgt]
-    if choice != "srt":
-        # Ask ASR device preference: prefer GPU when available, otherwise CPU
-        try:
-            import torch
-
-            default_device = "cuda" if torch.cuda.is_available() else "cpu"
-        except Exception:
-            default_device = "cpu"
-
-        # Prompt user for device choice (show default)
-        dev_in = input(f"ASR device (auto/cpu/cuda) [{default_device}]: ").strip()
-        if not dev_in:
-            dev_in = default_device
-        if dev_in not in ("auto", "cpu", "cuda"):
-            print("Unknown device choice, using default.")
-            dev_in = default_device
-
-        # Prompt user for ASR model (suggest 'small')
-        model_default = "small"
-        model_in = input(
-            f"ASR model (tiny/small/medium/large) [{model_default}]: "
-        ).strip()
-        if not model_in:
-            model_in = model_default
-
-        args_list.append("--regenerate")
-        args_list.extend(["--device", dev_in, "--asr-model", model_in])
-
-    # Ensure main() does not prompt again for ASR choices
-    args_list.append("--no-prompt")
-
-    print(f"Running pipeline with args: {args_list}")
-    args = parser.parse_args(args_list)
-    # call main logic by reusing the current main() flow: set sys.argv and recurse
-    # to avoid duplicating logic we call the non-interactive path by invoking
-    # the run via modifying sys.argv temporarily
-    old_argv = sys.argv
-    try:
-        sys.argv = [old_argv[0]] + args_list
-        main()
-    finally:
-        sys.argv = old_argv

@@ -33,6 +33,7 @@ packaging              # utilities for version/requirement parsing
 # Media handling
 ffmpeg-python          # ffmpeg invocation helper (extraction)
 webrtcvad              # Voice Activity Detection segmentation
+# whisperx             # Optional: forced-alignment backend (whisperx)
 
 ############################################################
 # Torch / GPU related                                       #
