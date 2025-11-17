@@ -38,7 +38,7 @@ def main():
         # Use a large Whisper model (may be slow and requires substantial GPU RAM)
         asr_result = transcribe_with_vad(
             wav_path,
-            model_name="openai/whisper-large-v2",
+            model_name="openai/whisper-large-v3",
             device="cuda",
             # source language is German for this test
             # transcribe_with_vad will forward this to the pipeline calls

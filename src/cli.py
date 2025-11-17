@@ -44,6 +44,32 @@ for _cuda_bin in _CUDA_BIN_CANDIDATES:
         pass
 
 
+def _normalize_asr_model(name: str) -> str:
+    """Normalize short ASR model names to full HuggingFace model IDs.
+
+    Accepts either a full model id (returned unchanged) or a short name like
+    'small' and expands to 'openai/whisper-small'. Special-case 'large'
+    to map to the recommended 'openai/whisper-large-v3'.
+    """
+    if not name:
+        return name
+    n = name.strip()
+    # If user supplied a full HF id (contains a '/'), return as-is
+    if "/" in n:
+        return n
+
+    mapping = {
+        "tiny": "openai/whisper-tiny",
+        "small": "openai/whisper-small",
+        "medium": "openai/whisper-medium",
+        # Recommend the explicit v3 large model by default
+        "large": "openai/whisper-large-v3",
+        "large-v3": "openai/whisper-large-v3",
+    }
+
+    return mapping.get(n.lower(), n)
+
+
 def build_parser() -> argparse.ArgumentParser:
     examples = """
 examples:
@@ -147,7 +173,12 @@ examples:
     parser.add_argument(
         "--asr-model",
         default="small",
-        help="ASR model to use for regeneration (e.g. small, medium, large).",
+        help=(
+            "ASR model to use for regeneration (e.g. small, medium, large). "
+            "Short names (tiny/small/medium/large) will be expanded to full HF IDs "
+            "(e.g. 'small' -> 'openai/whisper-small', 'large' -> 'openai/whisper-large-v3'). "
+            "You may also pass a full HuggingFace model id like 'openai/whisper-large-v3'."
+        ),
     )
 
     parser.add_argument(
@@ -204,7 +235,7 @@ def main() -> None:
                     args.device = dev_in
 
             # Ask for ASR model
-            model_prompt = f"ASR model (tiny/small/medium/large) [{args.asr_model}]: "
+            model_prompt = f"ASR model (tiny/small/medium/whisper-large-v3) [{args.asr_model}]: "
             model_in = input(model_prompt).strip()
             if model_in:
                 args.asr_model = model_in
@@ -244,7 +275,7 @@ def main() -> None:
         p_asr = Progress("ASR")
         p_asr.start()
         asr_out = transcribe_with_vad(
-            wav, model_name=args.asr_model, device=args.device
+            wav, model_name=_normalize_asr_model(args.asr_model), device=args.device
         )
         p_asr.finish("asr complete")
 
@@ -459,7 +490,9 @@ def _interactive_launcher() -> None:
 
         # Prompt user for ASR model (suggest 'small')
         model_default = "small"
-        model_in = input(f"ASR model (tiny/small/medium/large) [{model_default}]: ").strip()
+        model_in = input(
+            f"ASR model (tiny/small/medium/large) [{model_default}]: "
+        ).strip()
         if not model_in:
             model_in = model_default
 

@@ -137,6 +137,33 @@ python scripts/move_to_output.py workspaces/input/subs
 - If `ffmpeg` is not found, ensure `ffmpeg.exe` directory is on your PATH and restart PowerShell.
 - If ASR fails with memory errors on GPU, try a smaller `--asr-model` or use `--device cpu`.
 
+**12) Reducing use of `pkg_resources` in the project and dependencies**
+
+- The Python packaging API `pkg_resources` is deprecated. Projects and
+  dependencies should migrate to `importlib.resources`, `importlib.metadata`,
+  and the `packaging` library for parsing versions and requirements.
+- This repository does not directly import `pkg_resources`, but some third-party
+  packages (for example `webrtcvad`) may still use it and emit deprecation
+  warnings at runtime.
+
+Recommended actions:
+
+- Add the backports to your environment (already added to `requirements.txt`):
+
+```
+python -m pip install importlib-resources importlib-metadata packaging
+```
+
+- If a dependency you rely on uses `pkg_resources`, consider:
+  - Checking whether a newer upstream release has removed `pkg_resources`.
+  - Opening an upstream issue or PR to replace `pkg_resources` with
+    `importlib.resources` / `importlib.metadata` (see `DOCS/PACKAGE_MIGRATION.md`).
+  - Pinning or vendoring a fixed version if upstream is slow to accept patches.
+
+- For this project we suppress noisy runtime warnings about `pkg_resources`
+  by filtering them at runtime; however the long-term fix is to move
+  dependencies away from `pkg_resources`.
+
 **12) Next recommended steps**
 
 - If you plan on production use, install `webrtcvad` via `pipwin` or conda for best VAD quality.

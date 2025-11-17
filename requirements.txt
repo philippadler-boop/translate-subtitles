@@ -21,6 +21,12 @@ transformers           # HF pipelines (used for opus-mt models)
 sentencepiece          # Needed for many MT models (e.g. Helsinki-NLP opus-mt)
 sacremoses             # Additional tokenizer (optional but commonly needed)
 
+# Backports and packaging helpers to avoid `pkg_resources` usage and support
+# migration away from pkg_resources in dependencies.
+importlib-resources    # backport of importlib.resources for older Python
+importlib-metadata     # backport of importlib.metadata for older Python
+packaging              # utilities for version/requirement parsing
+
 # Local ASR: using Hugging Face `transformers` pipeline instead of faster-whisper
 # (install `transformers` and matching PyTorch for GPU support)
 
@@ -51,9 +57,9 @@ pytest-cov             # Coverage reporting
 ############################################################
 # Optional developer tooling (commented)                    #
 ############################################################
-# black                 # Code formatting
-# isort                 # Import sorting
-# mypy                  # Static type checking
-# ruff                  # Fast linting / formatting combo
+black                 # Code formatting
+isort                 # Import sorting
+mypy                  # Static type checking
+ruff                  # Fast linting / formatting combo
 
 # End of requirements.txt
