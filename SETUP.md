@@ -83,13 +83,15 @@ Either option avoids the need for Visual C++ build tools.
 - The project attempts to import `webrtcvad` in `src/vad.py`. If `webrtcvad` is not available the code falls back to a simple energy-based VAD so the pipeline still runs (but with less accuracy).
 - If you want the best segmentation quality, prefer installing `webrtcvad` via `pipwin` or installing VS Build Tools and then `pip install webrtcvad`.
 
-**7) GPU support and ASR (faster-whisper)**
+**7) GPU support and ASR (Hugging Face transformers pipeline)**
 
-- `faster-whisper` can use GPU (CUDA) when available. To enable GPU usage install a CUDA-enabled `torch` build first, then install the other deps. Example for CUDA 11.8 (adjust to your GPU/driver):
+- This project now uses the Hugging Face `transformers` ASR pipeline for local
+  transcription. To enable GPU acceleration install a CUDA-enabled `torch` build
+  first (matching your CUDA toolkit/driver), then install `transformers`:
 
 ```
 python -m pip install --extra-index-url https://download.pytorch.org/whl/cu118 torch torchvision --upgrade
-python -m pip install faster-whisper
+python -m pip install transformers
 ```
 
 If you do not have a GPU, CPU mode works but is slower.

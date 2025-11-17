@@ -21,9 +21,8 @@ transformers           # HF pipelines (used for opus-mt models)
 sentencepiece          # Needed for many MT models (e.g. Helsinki-NLP opus-mt)
 sacremoses             # Additional tokenizer (optional but commonly needed)
 
-# Local ASR (Whisper) accelerated by CTranslate2 backend
-faster-whisper         # Fast Whisper implementation (depends on ctranslate2)
-ctranslate2==4.6.1     # Version verified with CUDA 13 toolkits; update if needed
+# Local ASR: using Hugging Face `transformers` pipeline instead of faster-whisper
+# (install `transformers` and matching PyTorch for GPU support)
 
 # Media handling
 ffmpeg-python          # ffmpeg invocation helper (extraction)
@@ -38,7 +37,7 @@ webrtcvad              # Voice Activity Detection segmentation
 #   pip install --index-url https://download.pytorch.org/whl/cu124 torch torchvision torchaudio
 # If you stay on CPU-only, comment out torchvision/torchaudio and let plain
 # 'torch' resolve:
-torch                  # Unpinned; pin only after confirming desired CUDA build
+torch                   # Unpinned; pin only after confirming desired CUDA build
 # torchvision           # Uncomment if you need vision models (requires matching CUDA build)
 # torchaudio            # Uncomment if you need audio feature pipelines
 # accelerate            # Optional: HF performance utilities (device placement)

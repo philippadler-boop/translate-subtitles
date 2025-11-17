@@ -21,10 +21,13 @@ ASCII_HEADER = r"""
 WhisperFlow - subtitle translation pipeline
 """
 
-# Best-effort CUDA DLL discovery for Windows: ensure the CUDA v13 bin/x64 folder
-# is on PATH so `ctranslate2` can locate cublasLt64_13.dll when using device="cuda".
+# Best-effort CUDA DLL discovery for Windows: ensure the CUDA bin folders
+# are on PATH so `ctranslate2` can locate the required CUDA DLLs.
+# ctranslate2 4.6.x requires CUDA 12, so try v12.x first, then v13.0
 _CUDA_BIN_CANDIDATES = [
-    r"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin",
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\bin\x64",
+    r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\bin",
 ]
 
 for _cuda_bin in _CUDA_BIN_CANDIDATES:
@@ -153,6 +156,13 @@ examples:
         help="Device for ASR: auto|cpu|cuda. Defaults to auto.",
     )
 
+    # Hidden flag to suppress secondary interactive prompts in main()
+    parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+
     return parser
 
 
@@ -178,7 +188,8 @@ def main() -> None:
         # This allows choosing GPU/CPU and model size at runtime even when
         # the CLI was invoked with non-interactive defaults.
         try:
-            interactive = sys.stdin.isatty()
+            # Only prompt if running in a TTY and no-prompt is not set
+            interactive = sys.stdin.isatty() and not getattr(args, "no_prompt", False)
         except Exception:
             interactive = False
 
@@ -454,6 +465,9 @@ def _interactive_launcher() -> None:
 
         args_list.append("--regenerate")
         args_list.extend(["--device", dev_in, "--asr-model", model_in])
+
+    # Ensure main() does not prompt again for ASR choices
+    args_list.append("--no-prompt")
 
     print(f"Running pipeline with args: {args_list}")
     args = parser.parse_args(args_list)

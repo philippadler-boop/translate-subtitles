@@ -2,10 +2,12 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    # faster-whisper is optional; if not installed the import will fail at runtime
-    from faster_whisper import WhisperModel
-except Exception:  # pragma: no cover - import availability depends on environment
-    WhisperModel = None
+    # transformers pipeline for ASR
+    from transformers import pipeline as _hf_pipeline
+    _TRANSFORMERS_AVAILABLE = True
+except Exception:  # pragma: no cover - optional
+    _hf_pipeline = None
+    _TRANSFORMERS_AVAILABLE = False
 
 
 def _choose_device(device: str) -> str:
@@ -21,80 +23,56 @@ def _choose_device(device: str) -> str:
 
 def transcribe_with_whisper(
     wav_path: Path,
-    model_name: str = "small",
+    model_name: str = "openai/whisper-small",
     device: str = "auto",
     compute_type: str = "float32",
     model_instance=None,
 ) -> Dict[str, List[dict]]:
-    """Transcribe `wav_path` using faster-whisper and return segments.
+    """Transcribe `wav_path` using the Hugging Face `transformers` pipeline.
 
     Returns a dict: {"segments": [ {"start": float, "end": float, "text": str}, ... ] }
+
+    Note: the transformers ASR pipeline typically returns a single transcription
+    without fine-grained timestamps. We preserve the return format by returning
+    a single segment that covers the whole file.
     """
-    if model_instance is None:
-        if WhisperModel is None:
-            raise RuntimeError(
-                "faster-whisper is not installed. Please install it to use local ASR."
-            )
+    if not _TRANSFORMERS_AVAILABLE:
+        raise RuntimeError("transformers package is required for ASR but is not available in the environment.")
 
-        device = _choose_device(device)
-        model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    device_choice = _choose_device(device)
+    # pipeline expects device index (0-based) for CUDA or -1 for CPU
+    hf_device = 0 if device_choice == "cuda" else -1
+
+    # If a pre-created pipeline (model_instance) is provided, reuse it.
+    if model_instance is not None:
+        pipe = model_instance
     else:
-        model = model_instance
-
-    segments = []
-    # faster-whisper model.transcribe may return different shapes depending on version:
-    # - an iterable of segment-like objects/dicts
-    # - a dict with a 'segments' key
-    # - nested generators; handle these robustly
-    result = model.transcribe(str(wav_path))
-
-    # If result is a mapping with 'segments'
-    if isinstance(result, dict) and "segments" in result:
-        raw_segments = result["segments"]
-    else:
-        # Attempt to iterate and flatten nested generators
-        raw_segments = []
         try:
-            for item in result:
-                    # item may itself be a segment dict/object, or a generator yielding segments
-                    if isinstance(item, dict) and ("start" in item or "text" in item):
-                        raw_segments.append(item)
-                    else:
-                        # try to iterate sub-items (generator yields segment-like objects)
-                        try:
-                            for sub in item:
-                                # support both dict-like and object-like segment representations
-                                if isinstance(sub, dict) and (
-                                    "start" in sub or "text" in sub
-                                ):
-                                    raw_segments.append(sub)
-                                elif hasattr(sub, "start") or hasattr(sub, "text"):
-                                    raw_segments.append(sub)
-                        except TypeError:
-                            # item not iterable; it might be an object-like segment
-                            if hasattr(item, "start") or hasattr(item, "text"):
-                                raw_segments.append(item)
-                            # otherwise ignore
-        except TypeError:
-            # not iterable; fall back to empty
-            raw_segments = []
+            pipe = _hf_pipeline("automatic-speech-recognition", model=model_name, device=hf_device)
+        except Exception:
+            pipe = None
 
-    for segment in raw_segments:
-        # segment is expected to be an object/dict with .start .end .text
-        if isinstance(segment, dict):
-            start = float(segment.get("start", segment.get("begin", 0.0)))
-            end = float(segment.get("end", segment.get("finish", start)))
-            text = segment.get("text", "")
-        else:
-            # object-like
-            start = float(getattr(segment, "start", 0.0))
-            end = float(getattr(segment, "end", getattr(segment, "finish", start)))
-            text = str(getattr(segment, "text", ""))
+    if pipe is None:
+        raise RuntimeError("Failed to initialize transformers ASR pipeline with model '%s'" % model_name)
 
-        seg = {"start": start, "end": end, "text": text}
-        segments.append(seg)
+    # determine duration for a coarse end timestamp
+    try:
+        import wave as _wave
 
-    return {"segments": segments}
+        with _wave.open(str(wav_path), "rb") as _wf:
+            frames = _wf.getnframes()
+            rate = _wf.getframerate()
+            duration = frames / float(rate) if rate else 0.0
+    except Exception:
+        duration = 0.0
+
+    result = pipe(str(wav_path))
+    if isinstance(result, dict):
+        text = result.get("text", "")
+    else:
+        text = str(result)
+
+    return {"segments": [{"start": 0.0, "end": float(duration), "text": text}]}
 
 
 def transcribe_with_vad(
@@ -129,17 +107,16 @@ def transcribe_with_vad(
             compute_type=compute_type,
         )
 
-    # Try to create a single model instance to reuse across chunks to avoid
-    # expensive model reinitialization on every chunk.
+    # Prepare a single transformers pipeline instance to reuse across chunks
     model_instance = None
-    try:
-        if WhisperModel is not None:
+    if _TRANSFORMERS_AVAILABLE:
+        try:
             model_device = _choose_device(device)
-            model_instance = WhisperModel(model_name, device=model_device, compute_type=compute_type)
-    except Exception:
-        # If model construction fails here we'll fall back to creating per-chunk
-        # instances by letting transcribe_with_whisper create them.
-        model_instance = None
+            hf_device = 0 if model_device == "cuda" else -1
+            model_instance = _hf_pipeline("automatic-speech-recognition", model=model_name, device=hf_device)
+        except Exception:
+            # If pipeline creation fails here, transcribe_with_whisper will raise per-chunk.
+            model_instance = None
 
     # open source wave for slicing
     with wave.open(str(wav_path), "rb") as src_wf:
