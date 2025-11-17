@@ -39,7 +39,19 @@ def main():
         asr_result = transcribe_with_vad(
             wav_path,
             model_name="openai/whisper-large-v2",
-            device="cuda"
+            device="cuda",
+            # source language is German for this test
+            # transcribe_with_vad will forward this to the pipeline calls
+            # so the model will transcribe (not translate) German audio
+            # Note: for `transformers` pipeline, pass language='de'
+            # to force German transcription.
+            # If you prefer translation to English, set language=None and
+            # pass task='translate' (not implemented here).
+            # We pass the language string into the pipeline via parameter.
+            # The ASR functions accept `language` and forward to pipeline.
+            
+            # actual language parameter
+            language='de'
         )
         print("✓ ASR completed!")
     except Exception as e:

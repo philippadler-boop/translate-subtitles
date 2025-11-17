@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, List
+import concurrent.futures
 
 try:
     # transformers pipeline for ASR
@@ -8,6 +9,55 @@ try:
 except Exception:  # pragma: no cover - optional
     _hf_pipeline = None
     _TRANSFORMERS_AVAILABLE = False
+
+# Globals used by worker processes
+_WORKER_PIPE = None
+
+
+def _worker_init(model_name: str, device: str, language: str | None = None):
+    """Initializer for worker processes: create a module-global pipeline instance.
+
+    This avoids reloading the model for every chunk submitted to the worker.
+    Workers run in separate processes and load the pipeline on CPU (device '-1')
+    unless explicitly passed a CUDA device index (not recommended for multiple
+    workers on a single GPU).
+    """
+    global _WORKER_PIPE
+    try:
+        # Import inside worker to avoid pickling heavy objects
+        from transformers import pipeline as _local_pipeline
+
+        # If device provided is 'cuda' try to use GPU index 0, but keep CPU default
+        if device and device.startswith("cuda"):
+            hf_device = 0
+        else:
+            hf_device = -1
+
+        _WORKER_PIPE = _local_pipeline("automatic-speech-recognition", model=model_name, device=hf_device)
+    except Exception:
+        _WORKER_PIPE = None
+
+
+def _worker_transcribe(tmp_wav_path: str, language: str | None = None) -> dict:
+    """Transcribe a single temporary WAV file using the worker-global pipeline.
+
+    Returns a dict matching the per-chunk return value: {"segments": [...]}
+    """
+    global _WORKER_PIPE
+    if _WORKER_PIPE is None:
+        raise RuntimeError("Worker pipeline not initialized")
+
+    if language:
+        res = _WORKER_PIPE(str(tmp_wav_path), language=language)
+    else:
+        res = _WORKER_PIPE(str(tmp_wav_path))
+
+    # Normalize to dict-like with 'text' or 'segments'
+    if isinstance(res, dict) and "segments" in res:
+        return {"segments": res["segments"]}
+    if isinstance(res, dict) and "text" in res:
+        return {"segments": [{"start": 0.0, "end": 0.0, "text": res.get("text", "")}]} 
+    return {"segments": [{"start": 0.0, "end": 0.0, "text": str(res)}]}
 
 
 def _choose_device(device: str) -> str:
@@ -27,6 +77,7 @@ def transcribe_with_whisper(
     device: str = "auto",
     compute_type: str = "float32",
     model_instance=None,
+    language: str | None = None,
 ) -> Dict[str, List[dict]]:
     """Transcribe `wav_path` using the Hugging Face `transformers` pipeline.
 
@@ -48,7 +99,12 @@ def transcribe_with_whisper(
         pipe = model_instance
     else:
         try:
-            pipe = _hf_pipeline("automatic-speech-recognition", model=model_name, device=hf_device)
+            # suppress noisy device-setting prints from transformers/torch internals
+            import contextlib, os
+
+            with open(os.devnull, "w") as _devnull:
+                with contextlib.redirect_stdout(_devnull), contextlib.redirect_stderr(_devnull):
+                    pipe = _hf_pipeline("automatic-speech-recognition", model=model_name, device=hf_device)
         except Exception:
             pipe = None
 
@@ -66,7 +122,14 @@ def transcribe_with_whisper(
     except Exception:
         duration = 0.0
 
-    result = pipe(str(wav_path))
+    # Pass language to pipeline call when provided to force transcription language
+    import contextlib, os
+    with open(os.devnull, "w") as _devnull:
+        with contextlib.redirect_stdout(_devnull), contextlib.redirect_stderr(_devnull):
+            if language:
+                result = pipe(str(wav_path), language=language)
+            else:
+                result = pipe(str(wav_path))
     if isinstance(result, dict):
         text = result.get("text", "")
     else:
@@ -82,6 +145,7 @@ def transcribe_with_vad(
     compute_type: str = "float32",
     aggressiveness: int = 2,
     max_workers: int = 1,
+    language: str | None = None,
 ) -> Dict[str, List[dict]]:
     """Run VAD to split audio and transcribe per-segment.
 
@@ -105,6 +169,7 @@ def transcribe_with_vad(
             model_name=model_name,
             device=device,
             compute_type=compute_type,
+            language=language,
         )
 
     # Prepare a single transformers pipeline instance to reuse across chunks
@@ -119,6 +184,7 @@ def transcribe_with_vad(
             model_instance = None
 
     # open source wave for slicing
+    temp_chunks = []  # (tmp_name, seg.start, seg.end)
     with wave.open(str(wav_path), "rb") as src_wf:
         n_channels = src_wf.getnchannels()
         sampwidth = src_wf.getsampwidth()
@@ -133,35 +199,79 @@ def transcribe_with_vad(
             # write to temp wav
             with NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_name = tmp.name
-            try:
-                with wave.open(tmp_name, "wb") as out_wf:
-                    out_wf.setnchannels(n_channels)
-                    out_wf.setsampwidth(sampwidth)
-                    out_wf.setframerate(framerate)
-                    out_wf.writeframes(frames)
+            with wave.open(tmp_name, "wb") as out_wf:
+                out_wf.setnchannels(n_channels)
+                out_wf.setsampwidth(sampwidth)
+                out_wf.setframerate(framerate)
+                out_wf.writeframes(frames)
 
-                # transcribe the chunk
+            temp_chunks.append((tmp_name, s.start, s.end))
+
+    # Decide on parallelization: only parallelize on CPU to avoid multiple GPU model copies.
+    model_device = _choose_device(device)
+    use_parallel = max_workers and max_workers > 1 and model_device != "cuda"
+
+    if use_parallel:
+        workers = min(max_workers, len(temp_chunks) or 1)
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_worker_init,
+            initargs=(model_name, "cpu", language),
+        ) as exe:
+            futures = []
+            for tmp_name, seg_start, seg_end in temp_chunks:
+                futures.append((exe.submit(_worker_transcribe, tmp_name, language), tmp_name, seg_start))
+
+            for fut, tmp_name, seg_start in futures:
+                try:
+                    chunk_result = fut.result()
+                except Exception:
+                    chunk_result = {"segments": []}
+
+                for seg in chunk_result.get("segments", []):
+                    segments_out.append(
+                        {
+                            "start": float(seg.get("start", 0.0)) + seg_start,
+                            "end": float(seg.get("end", 0.0)) + seg_start,
+                            "text": seg.get("text", ""),
+                        }
+                    )
+
+        # cleanup temp files
+        for tmp_name, _, _ in temp_chunks:
+            try:
+                os.remove(tmp_name)
+            except OSError:
+                pass
+    else:
+        # Sequential transcription reusing a single in-process pipeline where available
+        for tmp_name, seg_start, seg_end in temp_chunks:
+            try:
                 chunk_result = transcribe_with_whisper(
                     Path(tmp_name),
                     model_name=model_name,
                     device=device,
                     compute_type=compute_type,
                     model_instance=model_instance,
+                    language=language,
                 )
-                # adjust timestamps
-                for seg in chunk_result.get("segments", []):
-                    segments_out.append(
-                        {
-                            "start": float(seg["start"]) + s.start,
-                            "end": float(seg["end"]) + s.start,
-                            "text": seg.get("text", ""),
-                        }
-                    )
-            finally:
-                try:
-                    os.remove(tmp_name)
-                except OSError:
-                    pass
+            except Exception:
+                chunk_result = {"segments": []}
+
+            for seg in chunk_result.get("segments", []):
+                segments_out.append(
+                    {
+                        "start": float(seg.get("start", 0.0)) + seg_start,
+                        "end": float(seg.get("end", 0.0)) + seg_start,
+                        "text": seg.get("text", ""),
+                    }
+                )
+
+        for tmp_name, _, _ in temp_chunks:
+            try:
+                os.remove(tmp_name)
+            except OSError:
+                pass
 
     # sort segments by start
     segments_out.sort(key=lambda x: x["start"])
