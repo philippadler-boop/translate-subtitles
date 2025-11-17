@@ -96,10 +96,144 @@ def _normalize_asr_model(name: str) -> str:
     return mapping.get(n.lower(), n)
 
 
+def _get_workspace_paths(base_name: str):
+    """Get standard workspace output paths.
+    
+    Returns:
+        Tuple of (audio_out_dir, srt_out_dir, outputs_root)
+    """
+    root = Path(__file__).resolve().parents[1]
+    workspaces_dir = root / "workspaces"
+    outputs_root = workspaces_dir / "output"
+    outputs_root.mkdir(parents=True, exist_ok=True)
+    
+    audio_out_dir = outputs_root / "audio"
+    audio_out_dir.mkdir(parents=True, exist_ok=True)
+    srt_out_dir = outputs_root / "srt"
+    srt_out_dir.mkdir(parents=True, exist_ok=True)
+    
+    return audio_out_dir, srt_out_dir, outputs_root
+
+
+def _run_regeneration_pipeline(args, input_path: Path):
+    """Run ASR regeneration pipeline: extract audio, transcribe, align, export words.
+    
+    Returns:
+        Generated subtitles from ASR output.
+    """
+    try:
+        from .io import extract_audio
+        from .asr.asr import transcribe_with_vad
+        from .subtitles.subtitle_sync import generate_srt_from_asr
+    except Exception as e:
+        raise SystemExit(f"Regenerate requested but required modules missing: {e}")
+
+    base_name = input_path.stem
+    audio_out_dir, srt_out_dir, _ = _get_workspace_paths(base_name)
+    
+    # Audio extraction
+    p_audio = Progress("Audio")
+    p_audio.start(total=1)
+    wav = audio_out_dir / f"{base_name}.wav"
+    wav = extract_audio(input_path, wav)
+    p_audio.update(1, "extracted")
+    p_audio.finish()
+
+    # ASR transcription
+    p_asr = Progress("ASR")
+    p_asr.start()
+    asr_language = None if args.src_lang == "auto" else args.src_lang
+    asr_out = transcribe_with_vad(
+        wav,
+        model_name=_normalize_asr_model(args.asr_model),
+        device=args.device,
+        language=asr_language,
+    )
+    p_asr.finish("asr complete")
+
+    # Optional forced alignment
+    if args.align:
+        method = args.align_method or "whisperx"
+        if method == "whisperx":
+            try:
+                from .align.aligner import align_with_whisperx
+
+                p_align = Progress("Alignment")
+                p_align.start()
+                aligned = align_with_whisperx(
+                    wav, asr_out.get("segments", []), device=args.device
+                )
+                asr_out = {"segments": aligned}
+                p_align.finish("aligned")
+            except Exception as e:
+                raise SystemExit(f"Alignment failed: {e}")
+        else:
+            raise SystemExit(f"Unknown alignment method: {method}")
+
+    # Optional word export & visualization
+    if args.export_words:
+        try:
+            from .visualizer.visualizer import (
+                extract_words_from_aligned_segments,
+                write_words_json,
+                write_simple_html_timeline,
+            )
+
+            p_words = Progress("Export Words")
+            p_words.start()
+            words = extract_words_from_aligned_segments(asr_out.get("segments", []))
+            out_json = Path(args.export_words)
+            write_words_json(words, out_json)
+            p_words.update(1, "json written")
+            if args.visualize:
+                html_out = out_json.with_suffix(".html")
+                write_simple_html_timeline(out_json, html_out)
+                p_words.update(1, "html written")
+            p_words.finish("export complete")
+        except Exception as e:
+            raise SystemExit(f"Exporting words/visualization failed: {e}")
+
+    # Generate and save original-language subtitles
+    subtitles = generate_srt_from_asr(asr_out)
+    src_lang_tag = (args.src_lang or "auto").replace(" ", "_")
+    original_srt_path = srt_out_dir / f"{base_name}.{src_lang_tag}.srt"
+    write_srt_file(subtitles, original_srt_path)
+    
+    return subtitles
+
+
+def _translate_subtitles(engine: str, subtitles, src_lang: str, tgt_lang: str, progress: Progress):
+    """Dispatch to the appropriate translation engine.
+    
+    Returns:
+        Translated subtitles.
+    """
+    translators = {
+        "google": ("translator_google", "translate_subtitles_google"),
+        "deepl": ("translator_deepl", "translate_subtitles_deepl"),
+        "gpt": ("translator_gpt", "translate_subtitles_gpt"),
+        "hf": ("translator_hf", "translate_subtitles_hf"),
+    }
+    
+    if engine not in translators:
+        raise SystemExit(f"Unknown engine: {engine}")
+    
+    module_name, func_name = translators[engine]
+    translator_module = __import__(f"src.translators.{module_name}", fromlist=[func_name])
+    translate_func = getattr(translator_module, func_name)
+    
+    return translate_func(
+        subtitles=subtitles,
+        source_lang=src_lang,
+        target_lang=tgt_lang,
+        progress=progress,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Translate .srt subtitle files between languages.",
-                epilog=CLI_EXAMPLES,
+        epilog=CLI_EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -214,158 +348,24 @@ def main() -> None:
     if not input_path.is_file():
         raise SystemExit(f"Input file not found: {input_path}")
 
-    engine = args.engine
-    print(f"Using engine: {engine}")
+    print(f"Using engine: {args.engine}")
     print(f"Source language: {args.src_lang} | Target language: {args.tgt_lang}")
 
-    # If regenerate requested, run ASR pipeline first to create subtitles
+    # Get or generate subtitles
     if args.regenerate:
-        try:
-            from .io import audio_cache_path, extract_audio
-            from .asr.asr import transcribe_with_vad
-            from .subtitles.subtitle_sync import generate_srt_from_asr
-        except Exception as e:
-            raise SystemExit(f"Regenerate requested but required modules missing: {e}")
-
-        src_path = input_path
-
-        # Compute per-input output base paths under workspaces/output
-        root = Path(__file__).resolve().parents[1]
-        workspaces_dir = root / "workspaces"
-        outputs_root = workspaces_dir / "output"
-        outputs_root.mkdir(parents=True, exist_ok=True)
-
-        base_name = src_path.stem
-        # Audio and SRT outputs: reuse base name and place into
-        # workspaces/output/audio and workspaces/output/srt
-        audio_out_dir = outputs_root / "audio"
-        audio_out_dir.mkdir(parents=True, exist_ok=True)
-        srt_out_dir = outputs_root / "srt"
-        srt_out_dir.mkdir(parents=True, exist_ok=True)
-        # Audio extraction progress
-        p_audio = Progress("Audio")
-        p_audio.start(total=1)
-        # Extract audio into workspaces/output/audio/<basename>.wav
-        wav = audio_out_dir / f"{base_name}.wav"
-        wav = extract_audio(src_path, wav)
-        p_audio.update(1, "extracted")
-        p_audio.finish()
-
-        # ASR progress (unknown total)
-        p_asr = Progress("ASR")
-        p_asr.start()
-        asr_out = transcribe_with_vad(
-            wav, model_name=_normalize_asr_model(args.asr_model), device=args.device
-        )
-        p_asr.finish("asr complete")
-
-        # Optional forced alignment
-        if args.align:
-            method = args.align_method or "whisperx"
-            if method == "whisperx":
-                try:
-                    from .align.aligner import align_with_whisperx
-
-                    p_align = Progress("Alignment")
-                    p_align.start()
-                    aligned = align_with_whisperx(
-                        wav, asr_out.get("segments", []), device=args.device
-                    )
-                    # aligned may be a list of segments with word timings; adapt to generator
-                    asr_out = {"segments": aligned}
-                    p_align.finish("aligned")
-                except Exception as e:
-                    raise SystemExit(f"Alignment failed: {e}")
-            else:
-                raise SystemExit(f"Unknown alignment method: {method}")
-
-        # Optionally export words & visualization
-        if args.export_words:
-            try:
-                from .visualizer.visualizer import (
-                    extract_words_from_aligned_segments,
-                    write_words_json,
-                    write_simple_html_timeline,
-                )
-
-                p_words = Progress("Export Words")
-                p_words.start()
-                words = extract_words_from_aligned_segments(asr_out.get("segments", []))
-                out_json = Path(args.export_words)
-                write_words_json(words, out_json)
-                p_words.update(1, "json written")
-                if args.visualize:
-                    html_out = out_json.with_suffix(".html")
-                    write_simple_html_timeline(out_json, html_out)
-                    p_words.update(1, "html written")
-                p_words.finish("export complete")
-            except Exception as e:
-                raise SystemExit(f"Exporting words/visualization failed: {e}")
-
-        # Generate initial subtitles from ASR output and persist original-language SRT
-        subtitles = generate_srt_from_asr(asr_out)
-        # Use the configured source language or "auto" in the filename
-        src_lang_tag = (args.src_lang or "auto").replace(" ", "_")
-        original_srt_path = srt_out_dir / f"{base_name}.{src_lang_tag}.srt"
-        write_srt_file(subtitles, original_srt_path)
-
-        # If a translation target is requested, fall through to translation step
+        subtitles = _run_regeneration_pipeline(args, input_path)
     else:
-        # No regeneration: read existing SRT file
         print(f"Reading:  {input_path}")
         subtitles = read_srt_file(input_path)
 
-    # Now translate `subtitles` using selected engine; provide Progress to translators
+    # Translate subtitles
     p_trans = Progress("Translate")
-    if engine == "google":
-        from .translators.translator_google import translate_subtitles_google
+    translated = _translate_subtitles(
+        args.engine, subtitles, args.src_lang, args.tgt_lang, p_trans
+    )
 
-        translated = translate_subtitles_google(
-            subtitles=subtitles,
-            source_lang=args.src_lang,
-            target_lang=args.tgt_lang,
-            progress=p_trans,
-        )
-
-    elif engine == "deepl":
-        from .translators.translator_deepl import translate_subtitles_deepl
-
-        translated = translate_subtitles_deepl(
-            subtitles=subtitles,
-            source_lang=args.src_lang,
-            target_lang=args.tgt_lang,
-            progress=p_trans,
-        )
-
-    elif engine == "gpt":
-        from .translators.translator_gpt import translate_subtitles_gpt
-
-        translated = translate_subtitles_gpt(
-            subtitles=subtitles,
-            source_lang=args.src_lang,
-            target_lang=args.tgt_lang,
-            progress=p_trans,
-        )
-
-    elif engine == "hf":
-        from .translators.translator_hf import translate_subtitles_hf
-
-        translated = translate_subtitles_hf(
-            subtitles=subtitles,
-            source_lang=args.src_lang,
-            target_lang=args.tgt_lang,
-            progress=p_trans,
-        )
-    else:
-        raise SystemExit(f"Unknown engine: {engine}")
-
-    # Always write translated SRTs only into workspaces/output/srt
-    # so that all outputs are grouped in a single location.
-    root = Path(__file__).resolve().parents[1]
-    workspaces_dir = root / "workspaces"
-    outputs_root = workspaces_dir / "output"
-    srt_out_dir = outputs_root / "srt"
-    srt_out_dir.mkdir(parents=True, exist_ok=True)
+    # Write translated output
+    _, srt_out_dir, _ = _get_workspace_paths(input_path.stem)
 
     translated_out = srt_out_dir / f"{input_path.stem}.{args.tgt_lang}.srt"
     print(f"Writing:  {translated_out}")
