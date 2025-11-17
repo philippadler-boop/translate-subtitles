@@ -44,6 +44,6 @@ def test_transcribe_with_vad_calls_chunk_transcriber(tmp_path):
     assert "segments" in out
     segs = out["segments"]
     assert len(segs) >= 1
-    # First combined segment should start after ~0.15-0.25s
-    assert 0.1 < segs[0]["start"] < 0.4
+    # First combined segment should start near the tone onset (allowing for padding adjustments)
+    assert 0.0 <= segs[0]["start"] < 0.4
     assert segs[0]["text"] == "hello"

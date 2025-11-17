@@ -176,7 +176,6 @@ def _run_regeneration_pipeline(args, input_path: Path):
             from .visualizer.visualizer import (
                 extract_words_from_aligned_segments,
                 write_words_json,
-                write_simple_html_timeline,
             )
 
             p_words = Progress("Export Words")
@@ -185,13 +184,10 @@ def _run_regeneration_pipeline(args, input_path: Path):
             out_json = Path(args.export_words)
             write_words_json(words, out_json)
             p_words.update(1, "json written")
-            if args.visualize:
-                html_out = out_json.with_suffix(".html")
-                write_simple_html_timeline(out_json, html_out)
-                p_words.update(1, "html written")
+            # Visualization (words.html) has been removed; JSON is the canonical export.
             p_words.finish("export complete")
         except Exception as e:
-            raise SystemExit(f"Exporting words/visualization failed: {e}")
+            raise SystemExit(f"Exporting words failed: {e}")
 
     # Generate and save original-language subtitles
     subtitles = generate_srt_from_asr(asr_out)

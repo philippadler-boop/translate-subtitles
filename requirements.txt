@@ -26,6 +26,7 @@ sacremoses             # Additional tokenizer (optional but commonly needed)
 importlib-resources    # backport of importlib.resources for older Python
 importlib-metadata     # backport of importlib.metadata for older Python
 packaging              # utilities for version/requirement parsing
+setuptools<81         # pin to avoid pkg_resources deprecation warnings from newer setuptools
 
 # Local ASR: using Hugging Face `transformers` pipeline instead of faster-whisper
 # (install `transformers` and matching PyTorch for GPU support)

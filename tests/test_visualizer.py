@@ -4,7 +4,6 @@ import json
 from src.visualizer.visualizer import (
     extract_words_from_aligned_segments,
     write_words_json,
-    write_simple_html_timeline,
 )
 
 
@@ -38,9 +37,5 @@ def test_write_words_json_and_html(tmp_path: Path):
     assert "words" in data
     assert data["words"][0]["text"] == "hello"
 
-    write_simple_html_timeline(json_path, html_path)
-    contents = html_path.read_text(encoding="utf-8")
-    assert "<html" in contents.lower()
-    assert "word timeline" in contents.lower()
-    # should reference the JSON file name so front-end JS can load it
-    assert json_path.name in contents
+    # HTML visualizer removed; JSON export is sufficient. Ensure JSON exists.
+    assert json_path.is_file()

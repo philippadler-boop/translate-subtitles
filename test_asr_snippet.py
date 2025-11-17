@@ -83,6 +83,23 @@ def main():
         output_srt = Path("workspaces/output/srt/test_5min.srt")
         output_srt.parent.mkdir(parents=True, exist_ok=True)
         write_srt_file(subtitles, output_srt)
+        # Also export word-level JSON and a simple HTML timeline
+        try:
+                from src.visualizer.visualizer import write_words_json
+
+                words = []
+                for seg in asr_result.get("segments", []):
+                    words.append({
+                        "text": seg.get("text", "").strip(),
+                        "start": float(seg.get("start", 0.0)),
+                        "end": float(seg.get("end", 0.0)),
+                    })
+
+                words_out = Path("workspaces/output/srt/test_5min.words.json")
+                write_words_json(words, words_out)
+                print(f"\n✓ Words JSON saved to: {words_out}")
+        except Exception as e:
+            print(f"Failed to write words.json/html: {e}")
         
         print(f"\n✓ SRT saved to: {output_srt}")
         print(f"  Total subtitle entries: {len(subtitles)}")

@@ -79,7 +79,6 @@ def test_run_regeneration_with_alignment_and_export(monkeypatch, tmp_path):
     # visualizer functions
     monkeypatch.setattr("src.visualizer.visualizer.extract_words_from_aligned_segments", lambda segs: [{"word":"hello"}])
     monkeypatch.setattr("src.visualizer.visualizer.write_words_json", lambda words, out: out.write_text('[]'))
-    monkeypatch.setattr("src.visualizer.visualizer.write_simple_html_timeline", lambda j, h: h.write_text('<html></html>'))
 
     monkeypatch.setattr("src.subtitles.subtitle_sync.generate_srt_from_asr", lambda asr_out: [srt.Subtitle(index=1, start=srt.timedelta(seconds=0), end=srt.timedelta(seconds=1), content="hello")])
 
@@ -96,4 +95,10 @@ def test_run_regeneration_with_alignment_and_export(monkeypatch, tmp_path):
     subtitles = _run_regeneration_pipeline(args, inp)
 
     assert isinstance(subtitles, list)
-    assert called['out'].exists() or True
+    # export_words should have been written (we monkeypatched write_words_json to write '[]')
+    exported = Path(args.export_words)
+    assert exported.exists()
+    assert exported.read_text(encoding='utf-8') == '[]'
+    # visualization HTML is no longer produced; JSON export is sufficient.
+    html_out = exported.with_suffix('.html')
+    assert not html_out.exists()
