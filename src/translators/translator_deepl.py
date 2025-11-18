@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from ..config.config_loader import get_from_env_or_json
 from .translator_google import translate_subtitles_google
+from ..subtitles.grouping import SubtitleGrouper
 from ..utils import Progress
 
 
@@ -18,6 +19,7 @@ def translate_subtitles_deepl(
     source_lang: str,
     target_lang: str,
     progress: Optional[Progress] = None,
+    grouper: Optional[SubtitleGrouper] = None,
 ) -> List[srt.Subtitle]:
     """
     Translate subtitles using DeepL API with retry + exponential backoff.
@@ -94,6 +96,7 @@ def translate_subtitles_deepl(
                     source_lang=source_lang,
                     target_lang=target_lang,
                     progress=None,
+                    grouper=grouper,
                 )
                 translated.extend(google_rest)
                 progress.finish("fallback to google")
@@ -148,10 +151,11 @@ def translate_subtitles_deepl(
 
             remaining = subtitles[idx:]
             google_rest = translate_subtitles_google(
-                remaining,
-                source_lang=source_lang,
-                target_lang=target_lang,
-            )
+                    remaining,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    grouper=grouper,
+                )
             translated.extend(google_rest)
             return translated
 

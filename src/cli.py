@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .io import read_srt_file, write_srt_file
 from .utils import Progress
+from .subtitles.grouping import SubtitleGrouper
 import sys
 
 
@@ -198,7 +199,14 @@ def _run_regeneration_pipeline(args, input_path: Path):
     return subtitles
 
 
-def _translate_subtitles(engine: str, subtitles, src_lang: str, tgt_lang: str, progress: Progress):
+def _translate_subtitles(
+    engine: str,
+    subtitles,
+    src_lang: str,
+    tgt_lang: str,
+    progress: Progress,
+    grouper=None,
+):
     """Dispatch to the appropriate translation engine.
     
     Returns:
@@ -217,13 +225,40 @@ def _translate_subtitles(engine: str, subtitles, src_lang: str, tgt_lang: str, p
     module_name, func_name = translators[engine]
     translator_module = __import__(f"src.translators.{module_name}", fromlist=[func_name])
     translate_func = getattr(translator_module, func_name)
-    
-    return translate_func(
-        subtitles=subtitles,
-        source_lang=src_lang,
-        target_lang=tgt_lang,
-        progress=progress,
-    )
+
+    # Prefer to forward a `grouper` kwarg when provided by the caller. Some
+    # translator implementations accept it (Google/DeepL wrappers). If the
+    # translator doesn't accept `grouper`, fall back to calling without it.
+    try:
+        return translate_func(
+            subtitles=subtitles,
+            source_lang=src_lang,
+            target_lang=tgt_lang,
+            progress=progress,
+            grouper=grouper,
+        )
+    except TypeError:
+        # translator did not accept 'grouper' kwarg — retry without it
+        try:
+            return translate_func(
+                subtitles=subtitles,
+                source_lang=src_lang,
+                target_lang=tgt_lang,
+                progress=progress,
+            )
+        except Exception as e:
+            raise SystemExit(f"Translation failed: {e}")
+    except Exception as e:
+        # Some other error occurred — attempt a best-effort retry without grouping
+        try:
+            return translate_func(
+                subtitles=subtitles,
+                source_lang=src_lang,
+                target_lang=tgt_lang,
+                progress=progress,
+            )
+        except Exception as e2:
+            raise SystemExit(f"Translation failed: {e}; fallback error: {e2}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -326,6 +361,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Device for ASR. Defaults to auto.",
     )
 
+    # Grouping options (Approach A)
+    parser.add_argument(
+        "--group-subtitles",
+        action="store_true",
+        help="Enable subtitle grouping before translation (Approach A). Disabled by default.",
+    )
+    parser.add_argument(
+        "--group-max-chars",
+        type=int,
+        default=200,
+        help="Maximum characters per grouped chunk (default: 200).",
+    )
+    parser.add_argument(
+        "--group-max-duration",
+        type=float,
+        default=6.0,
+        help="Maximum duration (seconds) per grouped chunk (default: 6.0).",
+    )
+    parser.add_argument(
+        "--group-by-punctuation",
+        action="store_true",
+        default=True,
+        help="Prefer to end grouped chunks on sentence-ending punctuation (default: True).",
+    )
+
     return parser
 
 
@@ -356,8 +416,17 @@ def main() -> None:
 
     # Translate subtitles
     p_trans = Progress("Translate")
+    # Build optional grouper from CLI args
+    grouper = None
+    if args.group_subtitles:
+        grouper = SubtitleGrouper(
+            max_chars=args.group_max_chars,
+            max_duration=args.group_max_duration,
+            group_by_punctuation=args.group_by_punctuation,
+        )
+
     translated = _translate_subtitles(
-        args.engine, subtitles, args.src_lang, args.tgt_lang, p_trans
+        args.engine, subtitles, args.src_lang, args.tgt_lang, p_trans, grouper=grouper
     )
 
     # Write translated output

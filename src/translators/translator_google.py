@@ -5,6 +5,7 @@ from deep_translator import GoogleTranslator
 from tqdm import tqdm
 
 from ..utils import Progress
+from ..subtitles.grouping import SubtitleGrouper
 
 
 def translate_subtitles_google(
@@ -12,6 +13,7 @@ def translate_subtitles_google(
     source_lang: str,
     target_lang: str,
     progress: Optional[Progress] = None,
+    grouper: Optional[SubtitleGrouper] = None,
 ) -> List[srt.Subtitle]:
     """
     Translate subtitles using GoogleTranslator from deep-translator.
@@ -25,7 +27,54 @@ def translate_subtitles_google(
 
     translated: List[srt.Subtitle] = []
 
-    # If a Progress object was provided, use it; otherwise fall back to tqdm
+    def _append_sub(idx: int, orig: srt.Subtitle, content: str):
+        translated.append(
+            srt.Subtitle(
+                index=orig.index,
+                start=orig.start,
+                end=orig.end,
+                content=content,
+                proprietary=orig.proprietary,
+            )
+        )
+
+    # Grouped flow (if a grouper is provided)
+    if grouper is not None:
+        groups = grouper.group(subtitles)
+        iterator = groups if progress is None else groups
+        if progress is not None:
+            progress.start(total=len(groups))
+
+        for g in iterator:
+            try:
+                result = translator.translate(g.text)
+            except Exception as e:
+                # if translation of a whole group fails, fall back to translating
+                # each line individually to maximize robustness
+                print(f"[Google] Error on group starting at {g.start}: {e}")
+                for orig in g.originals:
+                    try:
+                        r = translator.translate(orig.content)
+                    except Exception:
+                        r = orig.content
+                    _append_sub(orig.index, orig, r)
+                if progress is not None:
+                    progress.update(1, f"group {g.indices[0]}")
+                continue
+
+            # distribute translated text back to original subtitles
+            parts = grouper.distribute(result, g.originals)
+            for orig, part in zip(g.originals, parts):
+                _append_sub(orig.index, orig, part or orig.content)
+
+            if progress is not None:
+                progress.update(1, f"group {g.indices[0]}")
+
+        if progress is not None:
+            progress.finish("translation complete")
+        return translated
+
+    # Ungrouped (original) per-line behavior
     if progress is not None:
         progress.start(total=len(subtitles))
         for sub in subtitles:
