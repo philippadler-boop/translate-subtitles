@@ -425,6 +425,17 @@ def main() -> None:
             group_by_punctuation=args.group_by_punctuation,
         )
 
+    # Inform user about grouping and computed groups (if enabled)
+    if grouper is not None:
+        try:
+            groups = grouper.group(subtitles)
+            print(
+                f"Grouping enabled: {len(groups)} groups "
+                f"(max_chars={args.group_max_chars}, max_duration={args.group_max_duration}, "
+                f"by_punctuation={args.group_by_punctuation})"
+            )
+        except Exception as e:
+            print(f"Failed to compute grouping preview: {e}")
     translated = _translate_subtitles(
         args.engine, subtitles, args.src_lang, args.tgt_lang, p_trans, grouper=grouper
     )
